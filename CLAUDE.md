@@ -4,6 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Since this is an extension for Claude Code, important documentation references are included at:
 
+@docs/configuration-reference.md
 @docs/slash-commands-reference.md
 @docs/hooks-reference.md
 
@@ -66,7 +67,7 @@ chmod +x orchestra.py
 
 ### Orchestra CLI (orchestra.py)
 - **Extension Management**: Installs extensions to `.claude/commands/` (local) or `~/.claude/commands/` (global)
-- **Configuration**: Auto-configures Claude Code slash commands (`claude-slash-commands.json`) and hooks (`claude-hooks.json`)
+- **Configuration**: Auto-configures Claude Code hooks in `.claude/settings.json`
 - **Current Extensions**: Only `task-monitor` is implemented
 
 ### Task Monitor Extension (task_monitor.py)
@@ -94,8 +95,9 @@ class DeviationType(Enum):
 
 ### Configuration Files
 - `.claude-task.json` - Task state and progress (created by task monitor)
-- `claude-slash-commands.json` - Claude Code slash command definitions
-- `claude-hooks.json` - Claude Code hook configurations
+- `.claude/settings.json` - Claude Code settings including hook configurations
+- `claude-slash-commands.json` - Claude Code slash command definitions (legacy)
+- `claude-hooks.json` - Claude Code hook configurations (legacy)
 
 ## Task Monitor Usage
 

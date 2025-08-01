@@ -8,6 +8,7 @@ import sys
 import json
 import shutil
 from pathlib import Path
+from typing import Dict, Any
 from rich.console import Console
 from rich.table import Table
 
@@ -23,7 +24,7 @@ class Orchestra:
             "task-monitor": {
                 "name": "Task Monitor",
                 "description": "Keep Claude focused on your task requirements. Prevents scope creep, tracks progress, and guides you through requirements step by step.",
-                "commands": ["task start", "task status", "task next", "task complete", "focus"],
+                "commands": ["task start", "task progress", "task next", "task complete", "focus"],
                 "features": [
                     "Blocks off-topic commands",
                     "Warns about scope creep", 
@@ -33,7 +34,7 @@ class Orchestra:
             }
         }
 
-    def install(self, extension: str, scope: str = "local") -> None:
+    def install(self, extension: str, scope: str = "global") -> None:
         """Install an Orchestra extension"""
         if extension not in self.extensions:
             self.console.print(f"[bold red]❌ Unknown extension:[/bold red] {extension}")
@@ -49,74 +50,128 @@ class Orchestra:
         else:
             commands_dir = self.local_dir
             scripts_dir = Path(".claude") / "orchestra" / extension
+            
+            # Warning for project scope installation
+            self.console.print("\n[bold yellow]⚠️  Warning: Project scope installation[/bold yellow]")
+            self.console.print("[yellow]Installing to project scope (.claude/commands/) may conflict with global installations.[/yellow]")
+            self.console.print("[yellow]Claude Code does not support conflicts between user and project level commands.[/yellow]")
+            self.console.print("[yellow]Consider using global installation (default) unless project-specific commands are required.[/yellow]\n")
 
         # Create directories
         commands_dir.mkdir(parents=True, exist_ok=True)
         scripts_dir.mkdir(parents=True, exist_ok=True)
 
-        # Install bootstrap script
-        bootstrap_source = Path(__file__).parent / "bootstrap.py"
-        bootstrap_dest = scripts_dir.parent / "bootstrap.py"
-        
-        # Create bootstrap script content if source doesn't exist
-        if not bootstrap_source.exists():
-            bootstrap_content = '''#!/usr/bin/env python3
-"""Orchestra Bootstrap Script"""
-import sys
-import subprocess
-import os
-from pathlib import Path
+        # Create shell bootstrap script
+        bootstrap_dest = scripts_dir.parent / "bootstrap.sh"
+        bootstrap_content = '''#!/bin/sh
+# Orchestra Bootstrap Script
 
-def check_orchestra_installed():
-    try:
-        result = subprocess.run(["which", "orchestra"], capture_output=True, text=True, check=False)
-        return result.returncode == 0
-    except Exception:
-        return False
+# Function to check if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
 
-def show_install_instructions():
-    flag_file = Path.home() / ".claude" / ".orchestra-install-shown"
-    if flag_file.exists():
+# Function to find python executable
+find_python() {
+    if command_exists python3; then
+        echo "python3"
+    elif command_exists python; then
+        echo "python"
+    else
+        echo ""
+    fi
+}
+
+# Function to check if orchestra is installed
+check_orchestra_installed() {
+    command_exists orchestra
+}
+
+# Function to show install instructions
+show_install_instructions() {
+    FLAG_FILE="$HOME/.claude/.orchestra-install-shown"
+    if [ -f "$FLAG_FILE" ]; then
         return
-    print("=" * 60)
-    print("🎼 Orchestra not installed")
-    print("=" * 60)
-    print("\nThis project uses Orchestra extensions for Claude Code.")
-    print("\nTo install Orchestra globally:")
-    print("  pip install orchestra")
-    print("\nOr install from the project:")
-    print("  pip install -e .")
-    print("\nThen install the task-monitor extension:")
-    print("  orchestra install task-monitor")
-    print("\nFor more info: https://github.com/anthropics/orchestra")
-    print("=" * 60)
-    flag_file.parent.mkdir(parents=True, exist_ok=True)
-    flag_file.touch()
+    fi
+    
+    echo "============================================================"
+    echo "🎼 Orchestra not installed"
+    echo "============================================================"
+    echo ""
+    echo "This project uses Orchestra extensions for Claude Code."
+    echo ""
+    echo "To install Orchestra globally:"
+    echo "  pip install orchestra"
+    echo ""
+    echo "Or install from the project:"
+    echo "  pip install -e ."
+    echo ""
+    echo "Then install the task-monitor extension:"
+    echo "  orchestra install task-monitor"
+    echo ""
+    echo "For more info: https://github.com/anthropics/orchestra"
+    echo "============================================================"
+    
+    mkdir -p "$(dirname "$FLAG_FILE")"
+    touch "$FLAG_FILE"
+}
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: bootstrap.py <command> [args...]")
-        sys.exit(1)
-    if not check_orchestra_installed():
-        show_install_instructions()
-        sys.exit(1)
-    command = ["orchestra"] + sys.argv[1:]
-    try:
-        result = subprocess.run(command)
-        sys.exit(result.returncode)
-    except Exception as e:
-        print(f"Error running orchestra: {e}")
-        sys.exit(1)
+# Main execution
+if [ $# -lt 1 ]; then
+    echo "Usage: bootstrap.sh <command> [args...]"
+    exit 1
+fi
 
-if __name__ == "__main__":
-    main()
+# For hook commands, we need to run the Python script directly
+if [ "$1" = "hook" ]; then
+    PYTHON=$(find_python)
+    if [ -z "$PYTHON" ]; then
+        echo "Error: Python not found in PATH" >&2
+        exit 127
+    fi
+    
+    # Find the task_monitor.py script
+    SCRIPT_DIR="$(dirname "$0")"
+    LOCAL_SCRIPT="$SCRIPT_DIR/task-monitor/task_monitor.py"
+    GLOBAL_SCRIPT="$HOME/.claude/orchestra/task-monitor/task_monitor.py"
+    
+    if [ -f "$LOCAL_SCRIPT" ]; then
+        TASK_MONITOR="$LOCAL_SCRIPT"
+    elif [ -f "$GLOBAL_SCRIPT" ]; then
+        TASK_MONITOR="$GLOBAL_SCRIPT"
+    else
+        echo "Error: task_monitor.py not found" >&2
+        exit 1
+    fi
+    
+    # Execute the hook
+    exec "$PYTHON" "$TASK_MONITOR" "$@"
+fi
+
+# For regular commands, check if orchestra is installed
+if ! check_orchestra_installed; then
+    show_install_instructions
+    exit 1
+fi
+
+# Run orchestra with the provided arguments
+exec orchestra "$@"
 '''
-            with open(bootstrap_dest, 'w') as f:
-                f.write(bootstrap_content)
-        else:
-            shutil.copy(bootstrap_source, bootstrap_dest)
+        with open(bootstrap_dest, 'w') as f:
+            f.write(bootstrap_content)
         
         bootstrap_dest.chmod(0o755)
+
+        # Copy the task_monitor.py script
+        if extension == "task-monitor":
+            task_monitor_source = Path(__file__).parent / "extensions" / "task-monitor" / "task_monitor.py"
+            task_monitor_dest = scripts_dir / "task_monitor.py"
+            
+            if task_monitor_source.exists():
+                shutil.copy(task_monitor_source, task_monitor_dest)
+                task_monitor_dest.chmod(0o755)
+            else:
+                self.console.print(f"[bold red]⚠️ Warning:[/bold red] task_monitor.py not found at {task_monitor_source}")
 
         # Install subagents for intelligent deviation detection
         self._install_subagents(extension, scope)
@@ -127,29 +182,30 @@ if __name__ == "__main__":
 
         # Create individual command files
         # Now using bootstrap script for better team collaboration
-        bootstrap_path = ".claude/orchestra/bootstrap.py"
+        bootstrap_path = ".claude/orchestra/bootstrap.sh"
         commands = {
             "start": {
                 "description": "Start a new task with intelligent guided setup",
-                "script": f"!python {bootstrap_path} task start"
+                "script": f"!sh {bootstrap_path} task start"
             },
-            "status": {
+            "progress": {
                 "description": "Check current task progress and see what's been completed",
-                "script": f"!python {bootstrap_path} task status"
+                "script": f"!sh {bootstrap_path} task status"
             },
             "next": {
                 "description": "Show the next priority action to work on",
-                "script": f"!python {bootstrap_path} task next"
+                "script": f"!sh {bootstrap_path} task next"
             },
             "complete": {
                 "description": "Mark the current requirement as complete and see what's next",
-                "script": f"!python {bootstrap_path} task complete"
+                "script": f"!sh {bootstrap_path} task complete"
             }
         }
 
         # Write individual command files
         for cmd_name, cmd_info in commands.items():
-            cmd_content = f"""# /task {cmd_name}
+            cmd_content = f"""<!-- AUTO-GENERATED BY ORCHESTRA: task-monitor -->
+# /task {cmd_name}
 
 {cmd_info['description']}
 
@@ -159,11 +215,12 @@ if __name__ == "__main__":
                 f.write(cmd_content)
 
         # Also create a /focus command at the root level
-        focus_content = f"""# /focus
+        focus_content = f"""<!-- AUTO-GENERATED BY ORCHESTRA: task-monitor -->
+# /focus
 
 Quick reminder of what you should be working on right now
 
-!python {bootstrap_path} task focus"""
+!sh {bootstrap_path} task focus"""
 
         with open(commands_dir / "focus.md", 'w') as f:
             f.write(focus_content)
@@ -177,7 +234,7 @@ Quick reminder of what you should be working on right now
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": f"python {bootstrap_path} hook PreToolUse"
+                                "command": f"sh {bootstrap_path} hook PreToolUse"
                             }
                         ]
                     }
@@ -188,7 +245,7 @@ Quick reminder of what you should be working on right now
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": f"python {bootstrap_path} hook PostToolUse"
+                                "command": f"sh {bootstrap_path} hook PostToolUse"
                             }
                         ]
                     }
@@ -198,7 +255,7 @@ Quick reminder of what you should be working on right now
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": f"python {bootstrap_path} hook UserPromptSubmit"
+                                "command": f"sh {bootstrap_path} hook UserPromptSubmit"
                             }
                         ]
                     }
@@ -207,12 +264,14 @@ Quick reminder of what you should be working on right now
         }
 
         # Write or update settings file with hooks
-        settings_file = commands_dir.parent / "settings.local.json"
+        settings_file = commands_dir.parent / "settings.json"
         if settings_file.exists():
             with open(settings_file, 'r') as f:
-                existing_settings = json.load(f)
+                existing_settings: Dict[str, Any] = json.load(f)
         else:
-            existing_settings = {}
+            existing_settings = {
+                "$schema": "https://json.schemastore.org/claude-code-settings.json"
+            }
         
         # Merge hooks configuration
         if "hooks" in existing_settings:
@@ -220,7 +279,7 @@ Quick reminder of what you should be working on right now
             for event_name, event_hooks in hooks_config["hooks"].items():
                 existing_settings["hooks"][event_name] = event_hooks
         else:
-            existing_settings.update(hooks_config)
+            existing_settings["hooks"] = hooks_config["hooks"]
 
         with open(settings_file, 'w') as f:
             json.dump(existing_settings, f, indent=2)
@@ -229,7 +288,7 @@ Quick reminder of what you should be working on right now
         self.console.print(f"[bold]📁 Commands:[/bold]")
         self.console.print(f"   [dim]-[/dim] {task_dir}/*.md (sub-commands)")
         self.console.print(f"   [dim]-[/dim] {commands_dir / 'focus.md'}")
-        self.console.print(f"[bold]🚀 Bootstrap:[/bold] {scripts_dir.parent / 'bootstrap.py'}")
+        self.console.print(f"[bold]🚀 Bootstrap:[/bold] {scripts_dir.parent / 'bootstrap.sh'}")
         self.console.print(f"[bold]🪝 Hooks:[/bold] Configured in {settings_file}")
         self.console.print(f"\n[bold yellow]🎯 Start with:[/bold yellow] [cyan]/task start[/cyan]")
         self.console.print(f"\n[dim]Note: Commands will work for team members even without Orchestra installed[/dim]")
@@ -290,45 +349,127 @@ Quick reminder of what you should be working on right now
             if not local_installed and not global_installed:
                 self.console.print(f"  [dim]•[/dim] {ext_id} : [italic]{ext_info['description'][:60]}...[/italic]")
 
-    def uninstall(self, extension: str, scope: str = "local") -> None:
+    def uninstall(self, extension: str, scope: str = "global") -> None:
         """Uninstall an extension"""
         if scope == "global":
             commands_dir = self.global_dir
             scripts_dir = self.home / ".claude" / "orchestra" / extension
+            agents_dir = self.home / ".claude" / "agents"
         else:
             commands_dir = self.local_dir
             scripts_dir = Path(".claude") / "orchestra" / extension
+            agents_dir = Path(".claude") / "agents"
 
         removed = False
 
-        # Remove command directories if they exist
-        # Handle both task-monitor and task directories for compatibility
+        # Helper function to check if file was generated by Orchestra
+        def is_orchestra_generated(file_path: Path, expected_extension: str) -> bool:
+            """Check if a file has the Orchestra auto-generated comment"""
+            if not file_path.exists():
+                return False
+            
+            try:
+                with open(file_path, 'r') as f:
+                    first_line = f.readline().strip()
+                    return first_line == f"<!-- AUTO-GENERATED BY ORCHESTRA: {expected_extension} -->"
+            except Exception:
+                return False
+
+        # Remove command files if they were generated by Orchestra
         if extension == "task-monitor":
+            # Remove task sub-commands
             task_dir = commands_dir / "task"
             if task_dir.exists() and task_dir.is_dir():
-                shutil.rmtree(task_dir)
-                removed = True
-
-        command_dir = commands_dir / extension
-        if command_dir.exists() and command_dir.is_dir():
-            shutil.rmtree(command_dir)
-            removed = True
-
-        # Remove any root-level commands (like focus.md for task-monitor)
-        if extension == "task-monitor":
+                removed_count = 0
+                for cmd_file in task_dir.glob("*.md"):
+                    if is_orchestra_generated(cmd_file, extension):
+                        cmd_file.unlink()
+                        removed_count += 1
+                        removed = True
+                
+                # Remove the task directory if it's empty
+                if removed_count > 0 and not any(task_dir.iterdir()):
+                    task_dir.rmdir()
+                
+            # Remove focus.md if it was generated by Orchestra
             focus_file = commands_dir / "focus.md"
-            if focus_file.exists():
+            if is_orchestra_generated(focus_file, extension):
                 focus_file.unlink()
                 removed = True
 
-        # Remove scripts directory
+        # Remove subagents if they were generated by Orchestra
+        if agents_dir.exists() and extension == "task-monitor":
+            agent_files = ["off-topic-detector.md", "over-engineering-detector.md", "scope-creep-detector.md"]
+            for agent_file in agent_files:
+                agent_path = agents_dir / agent_file
+                if agent_path.exists():
+                    try:
+                        with open(agent_path, 'r') as f:
+                            # Check if it's our agent by looking for specific content
+                            content = f.read()
+                            if "Orchestra Task Monitor" in content or "scope creep" in content:
+                                agent_path.unlink()
+                                removed = True
+                    except Exception:
+                        pass
+
+        # Remove scripts directory (always safe to remove as it's only for Orchestra)
         if scripts_dir.exists():
             shutil.rmtree(scripts_dir)
             removed = True
 
+        # Remove bootstrap.sh if no other extensions are using it
+        bootstrap_path = scripts_dir.parent / "bootstrap.sh"
+        if bootstrap_path.exists():
+            # Check if any other extension directories exist
+            orchestra_dir = scripts_dir.parent
+            other_extensions = [d for d in orchestra_dir.iterdir() 
+                              if d.is_dir() and d.name != extension and d.name != "bootstrap.sh"]
+            
+            if not other_extensions:
+                bootstrap_path.unlink()
+                # Remove orchestra directory if empty
+                if not any(orchestra_dir.iterdir()):
+                    orchestra_dir.rmdir()
+
+        # Clean up hooks from settings.json
+        settings_file = commands_dir.parent / "settings.json"
+        if settings_file.exists() and extension == "task-monitor":
+            try:
+                with open(settings_file, 'r') as f:
+                    settings = json.load(f)
+                
+                if "hooks" in settings:
+                    # Remove task-monitor specific hooks
+                    bootstrap_command = f"sh {bootstrap_path} hook"
+                    
+                    for event_name in ["PreToolUse", "PostToolUse", "UserPromptSubmit"]:
+                        if event_name in settings["hooks"]:
+                            # Filter out Orchestra hooks
+                            if isinstance(settings["hooks"][event_name], list):
+                                settings["hooks"][event_name] = [
+                                    hook for hook in settings["hooks"][event_name]
+                                    if not (isinstance(hook, dict) and 
+                                           hook.get("hooks", [{}])[0].get("command", "").startswith(bootstrap_command))
+                                ]
+                                
+                                # Remove empty hook arrays
+                                if not settings["hooks"][event_name]:
+                                    del settings["hooks"][event_name]
+                    
+                    # Remove hooks key if empty
+                    if not settings["hooks"]:
+                        del settings["hooks"]
+                
+                # Write back the cleaned settings
+                with open(settings_file, 'w') as f:
+                    json.dump(settings, f, indent=2)
+                    
+            except Exception as e:
+                self.console.print(f"[yellow]⚠️ Warning: Could not clean up hooks from settings.json: {e}[/yellow]")
+
         if removed:
             self.console.print(f"[bold green]✅ Uninstalled {extension}[/bold green]")
-            # TODO: Clean up hooks from claude-hooks.json
         else:
             self.console.print(f"[bold red]❌ Extension not found:[/bold red] {extension}")
 
@@ -348,8 +489,8 @@ def main() -> None:
         commands_table.add_column("Description")
         
         console.print("[bold yellow]Commands:[/bold yellow]")
-        commands_table.add_row("install <extension> [--global]", "Install an extension")
-        commands_table.add_row("uninstall <extension> [--global]", "Uninstall an extension")
+        commands_table.add_row("install <extension> [--project]", "Install an extension (default: global)")
+        commands_table.add_row("uninstall <extension> [--project]", "Uninstall an extension (default: global)")
         commands_table.add_row("list", "List installed extensions")
         commands_table.add_row("task <subcommand>", "Run task monitor commands")
         console.print(commands_table)
@@ -385,7 +526,7 @@ def main() -> None:
         # Examples
         console.print("\n[bold yellow]Examples:[/bold yellow]")
         console.print("  [dim]$[/dim] orchestra install task-monitor")
-        console.print("  [dim]$[/dim] orchestra install task-monitor --global")
+        console.print("  [dim]$[/dim] orchestra install task-monitor --project")
         console.print("  [dim]$[/dim] orchestra task start")
         console.print("  [dim]$[/dim] orchestra task status\n")
         return
@@ -395,20 +536,22 @@ def main() -> None:
 
     if command == "install":
         if len(sys.argv) < 3:
-            console.print("[bold yellow]Usage:[/bold yellow] orchestra install <extension> [--global]")
+            console.print("[bold yellow]Usage:[/bold yellow] orchestra install <extension> [--project]")
+            console.print("[dim]Default: Installs globally to ~/.claude/commands/[/dim]")
             return
 
         extension = sys.argv[2]
-        scope = "global" if "--global" in sys.argv else "local"
+        scope = "local" if "--project" in sys.argv else "global"
         orchestra.install(extension, scope)
 
     elif command == "uninstall":
         if len(sys.argv) < 3:
-            console.print("[bold yellow]Usage:[/bold yellow] orchestra uninstall <extension> [--global]")
+            console.print("[bold yellow]Usage:[/bold yellow] orchestra uninstall <extension> [--project]")
+            console.print("[dim]Default: Uninstalls from global scope (~/.claude/commands/)[/dim]")
             return
 
         extension = sys.argv[2]
-        scope = "global" if "--global" in sys.argv else "local"
+        scope = "local" if "--project" in sys.argv else "global"
         orchestra.uninstall(extension, scope)
 
     elif command == "list":

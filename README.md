@@ -10,11 +10,11 @@ git clone git@github.com:coopermaruyama/orchestra.git
 cd orchestra
 pip install --user .
 
-# Install task-monitor extension (local to current project)
+# Install task-monitor extension (globally by default)
 orchestra install task-monitor
 
-# Or install globally for all projects
-orchestra install task-monitor --global
+# Or install to current project only
+orchestra install task-monitor --project
 
 # Use it in Claude Code
 /task start
@@ -25,7 +25,9 @@ orchestra install task-monitor --global
 
 ## What is Orchestra?
 
-Orchestra is a lightweight extension manager for Claude Code that helps you stay focused and productive. Extensions are installed to `.claude/commands/` (local) or `~/.claude/commands/` (global).
+Orchestra is a lightweight extension manager for Claude Code that helps you stay focused and productive. Extensions are installed to `~/.claude/commands/` (global by default) or `.claude/commands/` (project-specific with `--project` flag).
+
+> **⚠️ Important**: Claude Code does not support conflicts between user and project level commands. We recommend using global installation (default) unless you specifically need project-specific commands.
 
 ## Available Extensions
 
@@ -93,17 +95,20 @@ orchestra --help
 ### Install Extensions
 
 ```bash
-# Local install (current project only)
+# Global install (all projects) - DEFAULT
 orchestra install task-monitor
 
-# Global install (all projects)
-orchestra install task-monitor --global
+# Project-specific install (current project only)
+orchestra install task-monitor --project
 
 # List installed extensions
 orchestra list
 
-# Uninstall
+# Uninstall from global scope (default)
 orchestra uninstall task-monitor
+
+# Uninstall from project scope
+orchestra uninstall task-monitor --project
 ```
 
 ## Direct Command Usage
@@ -145,7 +150,7 @@ The bootstrap approach means:
 Orchestra uses a bootstrap architecture:
 - Commands: `.claude/commands/task/*.md` (slash commands)
 - Bootstrap: `.claude/orchestra/bootstrap.py` (checks for Orchestra)
-- Settings: Updates `.claude/settings.local.json` for hooks
+- Settings: Updates `.claude/settings.json` for hooks
 
 The bootstrap script:
 1. Checks if `orchestra` is in PATH
