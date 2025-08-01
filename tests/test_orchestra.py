@@ -8,6 +8,7 @@ import sys
 import os
 import tempfile
 import shutil
+import json
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -70,6 +71,14 @@ class TestOrchestra(unittest.TestCase):
         self.assertTrue(task_dir.exists(), "Task commands directory should be created")
         self.assertTrue((task_dir / "start.md").exists(), "Start command should exist")
         
+        # Check that settings.json was created (not settings.local.json)
+        settings_file = Path(".claude") / "settings.json"
+        self.assertTrue(settings_file.exists(), "settings.json should be created")
+        
+        # Verify settings.local.json was NOT created
+        local_settings_file = Path(".claude") / "settings.local.json"
+        self.assertFalse(local_settings_file.exists(), "settings.local.json should NOT be created")
+        
         # Check that console showed installation message
         console_calls = [str(call) for call in orchestra.console.print.call_args_list]
         install_message = any("installed task-monitor" in call.lower() for call in console_calls)
@@ -93,6 +102,48 @@ class TestOrchestra(unittest.TestCase):
             console_calls = [str(call) for call in orchestra.console.print.call_args_list]
             global_message = any("global" in call.lower() for call in console_calls)
             self.assertTrue(global_message, "Should indicate global installation")
+    
+    def test_settings_merge_with_existing(self):
+        """Test that settings are properly merged when file already exists"""
+        orchestra = Orchestra()
+        orchestra.console = MagicMock()
+        
+        # Create existing settings file with some content
+        settings_dir = Path(".claude")
+        settings_dir.mkdir(parents=True, exist_ok=True)
+        settings_file = settings_dir / "settings.json"
+        
+        existing_settings = {
+            "$schema": "https://json.schemastore.org/claude-code-settings.json",
+            "permissions": {
+                "allow": ["Read(~/.zshrc)"]
+            },
+            "env": {
+                "CUSTOM_VAR": "test"
+            }
+        }
+        
+        with open(settings_file, 'w') as f:
+            json.dump(existing_settings, f, indent=2)
+        
+        # Install task-monitor extension
+        orchestra.install("task-monitor", "local")
+        
+        # Read the updated settings
+        with open(settings_file, 'r') as f:
+            updated_settings = json.load(f)
+        
+        # Verify existing settings are preserved
+        self.assertEqual(updated_settings["$schema"], "https://json.schemastore.org/claude-code-settings.json")
+        self.assertIn("permissions", updated_settings)
+        self.assertEqual(updated_settings["permissions"]["allow"], ["Read(~/.zshrc)"])
+        self.assertEqual(updated_settings["env"]["CUSTOM_VAR"], "test")
+        
+        # Verify hooks were added
+        self.assertIn("hooks", updated_settings)
+        self.assertIn("PreToolUse", updated_settings["hooks"])
+        self.assertIn("PostToolUse", updated_settings["hooks"])
+        self.assertIn("UserPromptSubmit", updated_settings["hooks"])
 
 
 class TestSubagentTemplates(unittest.TestCase):

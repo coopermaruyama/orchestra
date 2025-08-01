@@ -145,7 +145,7 @@ The bootstrap approach means:
 Orchestra uses a bootstrap architecture:
 - Commands: `.claude/commands/task/*.md` (slash commands)
 - Bootstrap: `.claude/orchestra/bootstrap.py` (checks for Orchestra)
-- Settings: Updates `.claude/settings.local.json` for hooks
+- Settings: Updates `.claude/settings.json` for hooks
 
 The bootstrap script:
 1. Checks if `orchestra` is in PATH

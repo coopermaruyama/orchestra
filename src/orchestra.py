@@ -8,6 +8,7 @@ import sys
 import json
 import shutil
 from pathlib import Path
+from typing import Dict, Any
 from rich.console import Console
 from rich.table import Table
 
@@ -81,14 +82,14 @@ def show_install_instructions():
     print("=" * 60)
     print("🎼 Orchestra not installed")
     print("=" * 60)
-    print("\nThis project uses Orchestra extensions for Claude Code.")
-    print("\nTo install Orchestra globally:")
+    print("\\nThis project uses Orchestra extensions for Claude Code.")
+    print("\\nTo install Orchestra globally:")
     print("  pip install orchestra")
-    print("\nOr install from the project:")
+    print("\\nOr install from the project:")
     print("  pip install -e .")
-    print("\nThen install the task-monitor extension:")
+    print("\\nThen install the task-monitor extension:")
     print("  orchestra install task-monitor")
-    print("\nFor more info: https://github.com/anthropics/orchestra")
+    print("\\nFor more info: https://github.com/anthropics/orchestra")
     print("=" * 60)
     flag_file.parent.mkdir(parents=True, exist_ok=True)
     flag_file.touch()
@@ -207,12 +208,14 @@ Quick reminder of what you should be working on right now
         }
 
         # Write or update settings file with hooks
-        settings_file = commands_dir.parent / "settings.local.json"
+        settings_file = commands_dir.parent / "settings.json"
         if settings_file.exists():
             with open(settings_file, 'r') as f:
-                existing_settings = json.load(f)
+                existing_settings: Dict[str, Any] = json.load(f)
         else:
-            existing_settings = {}
+            existing_settings: Dict[str, Any] = {
+                "$schema": "https://json.schemastore.org/claude-code-settings.json"
+            }
         
         # Merge hooks configuration
         if "hooks" in existing_settings:
@@ -220,7 +223,7 @@ Quick reminder of what you should be working on right now
             for event_name, event_hooks in hooks_config["hooks"].items():
                 existing_settings["hooks"][event_name] = event_hooks
         else:
-            existing_settings.update(hooks_config)
+            existing_settings["hooks"] = hooks_config["hooks"]
 
         with open(settings_file, 'w') as f:
             json.dump(existing_settings, f, indent=2)
