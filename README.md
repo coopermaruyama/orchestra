@@ -6,7 +6,7 @@
 
 ```bash
 # Clone and install Orchestra system-wide
-git clone https://github.com/your-org/orchestra.git
+git clone git@github.com:coopermaruyama/orchestra.git
 cd orchestra
 pip install --user .
 
