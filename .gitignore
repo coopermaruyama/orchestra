@@ -4,3 +4,4 @@ build
 *.egg-info
 .pytest_cache
 .claude-task.json
+__pycache__
