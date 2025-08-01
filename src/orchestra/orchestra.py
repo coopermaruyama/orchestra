@@ -24,7 +24,7 @@ class Orchestra:
             "task-monitor": {
                 "name": "Task Monitor",
                 "description": "Keep Claude focused on your task requirements. Prevents scope creep, tracks progress, and guides you through requirements step by step.",
-                "commands": ["task start", "task status", "task next", "task complete", "focus"],
+                "commands": ["task start", "task progress", "task next", "task complete", "focus"],
                 "features": [
                     "Blocks off-topic commands",
                     "Warns about scope creep", 
@@ -55,69 +55,117 @@ class Orchestra:
         commands_dir.mkdir(parents=True, exist_ok=True)
         scripts_dir.mkdir(parents=True, exist_ok=True)
 
-        # Install bootstrap script
-        bootstrap_source = Path(__file__).parent / "bootstrap.py"
-        bootstrap_dest = scripts_dir.parent / "bootstrap.py"
-        
-        # Create bootstrap script content if source doesn't exist
-        if not bootstrap_source.exists():
-            bootstrap_content = '''#!/usr/bin/env python3
-"""Orchestra Bootstrap Script"""
-import sys
-import subprocess
-import os
-from pathlib import Path
+        # Create shell bootstrap script
+        bootstrap_dest = scripts_dir.parent / "bootstrap.sh"
+        bootstrap_content = '''#!/bin/sh
+# Orchestra Bootstrap Script
 
-def check_orchestra_installed():
-    try:
-        result = subprocess.run(["which", "orchestra"], capture_output=True, text=True, check=False)
-        return result.returncode == 0
-    except Exception:
-        return False
+# Function to check if a command exists
+command_exists() {
+    command -v "$1" >/dev/null 2>&1
+}
 
-def show_install_instructions():
-    flag_file = Path.home() / ".claude" / ".orchestra-install-shown"
-    if flag_file.exists():
+# Function to find python executable
+find_python() {
+    if command_exists python3; then
+        echo "python3"
+    elif command_exists python; then
+        echo "python"
+    else
+        echo ""
+    fi
+}
+
+# Function to check if orchestra is installed
+check_orchestra_installed() {
+    command_exists orchestra
+}
+
+# Function to show install instructions
+show_install_instructions() {
+    FLAG_FILE="$HOME/.claude/.orchestra-install-shown"
+    if [ -f "$FLAG_FILE" ]; then
         return
-    print("=" * 60)
-    print("🎼 Orchestra not installed")
-    print("=" * 60)
-    print("\\nThis project uses Orchestra extensions for Claude Code.")
-    print("\\nTo install Orchestra globally:")
-    print("  pip install orchestra")
-    print("\\nOr install from the project:")
-    print("  pip install -e .")
-    print("\\nThen install the task-monitor extension:")
-    print("  orchestra install task-monitor")
-    print("\\nFor more info: https://github.com/anthropics/orchestra")
-    print("=" * 60)
-    flag_file.parent.mkdir(parents=True, exist_ok=True)
-    flag_file.touch()
+    fi
+    
+    echo "============================================================"
+    echo "🎼 Orchestra not installed"
+    echo "============================================================"
+    echo ""
+    echo "This project uses Orchestra extensions for Claude Code."
+    echo ""
+    echo "To install Orchestra globally:"
+    echo "  pip install orchestra"
+    echo ""
+    echo "Or install from the project:"
+    echo "  pip install -e ."
+    echo ""
+    echo "Then install the task-monitor extension:"
+    echo "  orchestra install task-monitor"
+    echo ""
+    echo "For more info: https://github.com/anthropics/orchestra"
+    echo "============================================================"
+    
+    mkdir -p "$(dirname "$FLAG_FILE")"
+    touch "$FLAG_FILE"
+}
 
-def main():
-    if len(sys.argv) < 2:
-        print("Usage: bootstrap.py <command> [args...]")
-        sys.exit(1)
-    if not check_orchestra_installed():
-        show_install_instructions()
-        sys.exit(1)
-    command = ["orchestra"] + sys.argv[1:]
-    try:
-        result = subprocess.run(command)
-        sys.exit(result.returncode)
-    except Exception as e:
-        print(f"Error running orchestra: {e}")
-        sys.exit(1)
+# Main execution
+if [ $# -lt 1 ]; then
+    echo "Usage: bootstrap.sh <command> [args...]"
+    exit 1
+fi
 
-if __name__ == "__main__":
-    main()
+# For hook commands, we need to run the Python script directly
+if [ "$1" = "hook" ]; then
+    PYTHON=$(find_python)
+    if [ -z "$PYTHON" ]; then
+        echo "Error: Python not found in PATH" >&2
+        exit 127
+    fi
+    
+    # Find the task_monitor.py script
+    SCRIPT_DIR="$(dirname "$0")"
+    LOCAL_SCRIPT="$SCRIPT_DIR/task-monitor/task_monitor.py"
+    GLOBAL_SCRIPT="$HOME/.claude/orchestra/task-monitor/task_monitor.py"
+    
+    if [ -f "$LOCAL_SCRIPT" ]; then
+        TASK_MONITOR="$LOCAL_SCRIPT"
+    elif [ -f "$GLOBAL_SCRIPT" ]; then
+        TASK_MONITOR="$GLOBAL_SCRIPT"
+    else
+        echo "Error: task_monitor.py not found" >&2
+        exit 1
+    fi
+    
+    # Execute the hook
+    exec "$PYTHON" "$TASK_MONITOR" "$@"
+fi
+
+# For regular commands, check if orchestra is installed
+if ! check_orchestra_installed; then
+    show_install_instructions
+    exit 1
+fi
+
+# Run orchestra with the provided arguments
+exec orchestra "$@"
 '''
-            with open(bootstrap_dest, 'w') as f:
-                f.write(bootstrap_content)
-        else:
-            shutil.copy(bootstrap_source, bootstrap_dest)
+        with open(bootstrap_dest, 'w') as f:
+            f.write(bootstrap_content)
         
         bootstrap_dest.chmod(0o755)
+
+        # Copy the task_monitor.py script
+        if extension == "task-monitor":
+            task_monitor_source = Path(__file__).parent / "extensions" / "task-monitor" / "task_monitor.py"
+            task_monitor_dest = scripts_dir / "task_monitor.py"
+            
+            if task_monitor_source.exists():
+                shutil.copy(task_monitor_source, task_monitor_dest)
+                task_monitor_dest.chmod(0o755)
+            else:
+                self.console.print(f"[bold red]⚠️ Warning:[/bold red] task_monitor.py not found at {task_monitor_source}")
 
         # Install subagents for intelligent deviation detection
         self._install_subagents(extension, scope)
@@ -128,23 +176,23 @@ if __name__ == "__main__":
 
         # Create individual command files
         # Now using bootstrap script for better team collaboration
-        bootstrap_path = ".claude/orchestra/bootstrap.py"
+        bootstrap_path = ".claude/orchestra/bootstrap.sh"
         commands = {
             "start": {
                 "description": "Start a new task with intelligent guided setup",
-                "script": f"!python {bootstrap_path} task start"
+                "script": f"!sh {bootstrap_path} task start"
             },
-            "status": {
+            "progress": {
                 "description": "Check current task progress and see what's been completed",
-                "script": f"!python {bootstrap_path} task status"
+                "script": f"!sh {bootstrap_path} task status"
             },
             "next": {
                 "description": "Show the next priority action to work on",
-                "script": f"!python {bootstrap_path} task next"
+                "script": f"!sh {bootstrap_path} task next"
             },
             "complete": {
                 "description": "Mark the current requirement as complete and see what's next",
-                "script": f"!python {bootstrap_path} task complete"
+                "script": f"!sh {bootstrap_path} task complete"
             }
         }
 
@@ -164,7 +212,7 @@ if __name__ == "__main__":
 
 Quick reminder of what you should be working on right now
 
-!python {bootstrap_path} task focus"""
+!sh {bootstrap_path} task focus"""
 
         with open(commands_dir / "focus.md", 'w') as f:
             f.write(focus_content)
@@ -178,7 +226,7 @@ Quick reminder of what you should be working on right now
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": f"python {bootstrap_path} hook PreToolUse"
+                                "command": f"sh {bootstrap_path} hook PreToolUse"
                             }
                         ]
                     }
@@ -189,7 +237,7 @@ Quick reminder of what you should be working on right now
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": f"python {bootstrap_path} hook PostToolUse"
+                                "command": f"sh {bootstrap_path} hook PostToolUse"
                             }
                         ]
                     }
@@ -199,7 +247,7 @@ Quick reminder of what you should be working on right now
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": f"python {bootstrap_path} hook UserPromptSubmit"
+                                "command": f"sh {bootstrap_path} hook UserPromptSubmit"
                             }
                         ]
                     }
@@ -232,7 +280,7 @@ Quick reminder of what you should be working on right now
         self.console.print(f"[bold]📁 Commands:[/bold]")
         self.console.print(f"   [dim]-[/dim] {task_dir}/*.md (sub-commands)")
         self.console.print(f"   [dim]-[/dim] {commands_dir / 'focus.md'}")
-        self.console.print(f"[bold]🚀 Bootstrap:[/bold] {scripts_dir.parent / 'bootstrap.py'}")
+        self.console.print(f"[bold]🚀 Bootstrap:[/bold] {scripts_dir.parent / 'bootstrap.sh'}")
         self.console.print(f"[bold]🪝 Hooks:[/bold] Configured in {settings_file}")
         self.console.print(f"\n[bold yellow]🎯 Start with:[/bold yellow] [cyan]/task start[/cyan]")
         self.console.print(f"\n[dim]Note: Commands will work for team members even without Orchestra installed[/dim]")

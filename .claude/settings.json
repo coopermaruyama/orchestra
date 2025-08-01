@@ -23,7 +23,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/orchestra/bootstrap.py hook PreToolUse"
+            "command": "sh .claude/orchestra/bootstrap.sh hook PreToolUse"
           }
         ]
       }
@@ -34,7 +34,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/orchestra/bootstrap.py hook PostToolUse"
+            "command": "sh .claude/orchestra/bootstrap.sh hook PostToolUse"
           }
         ]
       }
@@ -44,7 +44,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "python .claude/orchestra/bootstrap.py hook UserPromptSubmit"
+            "command": "sh .claude/orchestra/bootstrap.sh hook UserPromptSubmit"
           }
         ]
       }

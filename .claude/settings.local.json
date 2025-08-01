@@ -1,0 +1,14 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(mv:*)",
+      "Bash(pipx uninstall:*)",
+      "Bash(pipx install:*)",
+      "Bash(orchestra uninstall:*)",
+      "Bash(orchestra install:*)",
+      "Bash(orchestra task:*)"
+    ],
+    "deny": []
+  }
+}

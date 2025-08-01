@@ -2,4 +2,4 @@
 
 Mark the current requirement as complete and see what's next
 
-!python .claude/orchestra/bootstrap.py task complete
+!sh .claude/orchestra/bootstrap.sh task complete

@@ -2,4 +2,4 @@
 
 Start a new task with intelligent guided setup
 
-!python .claude/orchestra/bootstrap.py task start
+!sh .claude/orchestra/bootstrap.sh task start
