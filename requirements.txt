@@ -1,0 +1,3 @@
+# Claude Code Task Monitor Dependencies
+watchdog==3.0.0  # For file system monitoring in the daemon
+rich==13.7.0     # For colorful terminal output
