@@ -15,39 +15,5 @@
       "Bash(python:*)"
     ],
     "deny": []
-  },
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh .claude/orchestra/bootstrap.sh hook PreToolUse"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh .claude/orchestra/bootstrap.sh hook PostToolUse"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "sh .claude/orchestra/bootstrap.sh hook UserPromptSubmit"
-          }
-        ]
-      }
-    ]
   }
 }

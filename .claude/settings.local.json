@@ -7,7 +7,8 @@
       "Bash(pipx install:*)",
       "Bash(orchestra uninstall:*)",
       "Bash(orchestra install:*)",
-      "Bash(orchestra task:*)"
+      "Bash(orchestra task:*)",
+      "Bash(grep:*)"
     ],
     "deny": []
   }
