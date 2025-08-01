@@ -11,6 +11,7 @@ from typing import Dict, Optional, Any, Union, List
 from dataclasses import dataclass, asdict
 from enum import Enum
 from datetime import datetime
+from pathlib import Path
 
 class DeviationType(Enum):
     SCOPE_CREEP = "scope_creep"
@@ -27,8 +28,10 @@ class TaskRequirement:
     completed: bool = False
 
 class TaskAlignmentMonitor:
-    def __init__(self, config_path: str = ".claude-task.json") -> None:
-        self.config_path = config_path
+    def __init__(self, config_path: Optional[str] = None) -> None:
+        # Use CLAUDE_WORKING_DIR if available, otherwise current directory
+        working_dir = os.environ.get('CLAUDE_WORKING_DIR', '.')
+        self.config_path = config_path or os.path.join(working_dir, '.claude-task.json')
         self.task: str = ""
         self.requirements: List[TaskRequirement] = []
         self.settings: Dict[str, Any] = {}
@@ -813,7 +816,8 @@ def main() -> None:
         print("🪝 Hooks configured in .claude/settings.local.json")
         
         # Check if .claude-task.json is in .gitignore
-        gitignore_path = Path(".gitignore")
+        working_dir = os.environ.get('CLAUDE_WORKING_DIR', '.')
+        gitignore_path = Path(working_dir) / ".gitignore"
         if gitignore_path.exists():
             with open(gitignore_path, 'r') as f:
                 gitignore_content = f.read()

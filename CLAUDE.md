@@ -2,6 +2,11 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+Since this is an extension for Claude Code, important documentation references are included at:
+
+@docs/slash-commands-reference.md
+@docs/hooks-reference.md
+
 ## Project Overview
 
 Orchestra is a lightweight extension manager for Claude Code that helps developers stay focused and productive. It consists of two main components:

@@ -2,4 +2,4 @@
 
 Mark the current requirement as complete and see what's next
 
-!python .claude/orchestra/task-monitor/task_monitor.py complete
+!python .claude/orchestra/bootstrap.py task complete

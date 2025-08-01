@@ -20,6 +20,9 @@ orchestra install task-monitor --global
 /task start
 ```
 
+> Note: Extensions include a bootstrap script that allows team members to use commands even without Orchestra installed. They'll get friendly installation instructions on first use.
+
+
 ## What is Orchestra?
 
 Orchestra is a lightweight extension manager for Claude Code that helps you stay focused and productive. Extensions are installed to `.claude/commands/` (local) or `~/.claude/commands/` (global).
@@ -124,16 +127,30 @@ You can run task commands directly from the command line without entering Claude
 ./orchestra.py task focus
 ```
 
+## Team Collaboration
+
+When you install Orchestra extensions in a project, team members can use the commands immediately:
+
+1. **With Orchestra installed**: Commands work directly through the `orchestra` CLI
+2. **Without Orchestra**: The bootstrap script shows one-time installation instructions
+
+The bootstrap approach means:
+- No duplicate code in version control
+- Always uses the latest Orchestra version
+- Graceful degradation for team members
+- Commands in `.claude/commands/` are automatically available
+
 ## How It Works
 
-Orchestra installs extensions to Claude Code's standard directories:
-- Commands: `.claude/commands/task/*.md` (sub-commands)
-- Scripts: `.claude/orchestra/task-monitor/task_monitor.py`
-- Global versions in `~/.claude/` instead of `.claude/`
+Orchestra uses a bootstrap architecture:
+- Commands: `.claude/commands/task/*.md` (slash commands)
+- Bootstrap: `.claude/orchestra/bootstrap.py` (checks for Orchestra)
+- Settings: Updates `.claude/settings.local.json` for hooks
 
-It automatically configures:
-- Slash commands in `claude-slash-commands.json`
-- Hooks in `claude-hooks.json`
+The bootstrap script:
+1. Checks if `orchestra` is in PATH
+2. If yes: Executes the command
+3. If no: Shows installation instructions (once per session)
 
 ## Project Structure
 

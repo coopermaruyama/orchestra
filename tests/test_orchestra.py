@@ -11,13 +11,14 @@ import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-# Add the parent directory to path to import orchestra
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Add the src directory to path to import orchestra
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 try:
     from orchestra import Orchestra
     RICH_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    print(f"Import error in test: {e}")
     RICH_AVAILABLE = False
 
 
@@ -48,50 +49,50 @@ class TestOrchestra(unittest.TestCase):
         os.chdir(self.original_cwd)
         shutil.rmtree(self.temp_dir)
     
-    @patch('orchestra.Path.__file__')
-    def test_subagent_installation(self, mock_file):
-        """Test that subagents are installed with task-monitor extension"""
-        # Mock the __file__ path to point to our temp directory
-        mock_file.parent = Path(self.temp_dir)
-        
-        # Mock console to capture output
+    def test_bootstrap_installation(self):
+        """Test that bootstrap script is installed with task-monitor extension"""
         orchestra = Orchestra()
         orchestra.console = MagicMock()
         
         # Install task-monitor extension locally
         orchestra.install("task-monitor", "local")
         
-        # Check that agents directory was created
-        agents_dir = Path(".claude") / "agents"
-        self.assertTrue(agents_dir.exists())
+        # Check that bootstrap script was created
+        bootstrap_path = Path(".claude") / "orchestra" / "bootstrap.py"
+        self.assertTrue(bootstrap_path.exists(), "Bootstrap script should be created")
         
-        # Check that test agent was copied
-        test_agent = agents_dir / "test-agent.md"
-        self.assertTrue(test_agent.exists())
+        # Check that commands directory was created
+        commands_dir = Path(".claude") / "commands"
+        self.assertTrue(commands_dir.exists(), "Commands directory should be created")
         
-        # Check that console showed subagent installation message
+        # Check that task commands were created
+        task_dir = commands_dir / "task"
+        self.assertTrue(task_dir.exists(), "Task commands directory should be created")
+        self.assertTrue((task_dir / "start.md").exists(), "Start command should exist")
+        
+        # Check that console showed installation message
         console_calls = [str(call) for call in orchestra.console.print.call_args_list]
-        subagent_message = any("subagents" in call.lower() for call in console_calls)
-        self.assertTrue(subagent_message, "Should display subagent installation message")
+        install_message = any("installed task-monitor" in call.lower() for call in console_calls)
+        self.assertTrue(install_message, "Should display installation message")
     
-    @patch('orchestra.Path.__file__')
-    def test_global_subagent_installation(self, mock_file):
-        """Test that subagents are installed globally when requested"""
-        mock_file.parent = Path(self.temp_dir)
-        
+    def test_global_bootstrap_installation(self):
+        """Test that bootstrap is installed globally when requested"""
         orchestra = Orchestra()
         orchestra.console = MagicMock()
         
-        # Install task-monitor extension globally
-        orchestra.install("task-monitor", "global")
-        
-        # Check that global agents directory was created
-        global_agents_dir = orchestra.home / ".claude" / "agents"
-        # Note: In real usage this would be created, but in test we just verify the path is correct
-        # The actual mkdir is mocked since we don't want to modify the real home directory
-        
-        # Verify the method was called with the right parameters
-        orchestra.console.print.assert_called()
+        # Mock the home directory to avoid modifying real system
+        with patch.object(orchestra, 'home', Path(self.temp_dir)):
+            # Install task-monitor extension globally
+            orchestra.install("task-monitor", "global")
+            
+            # Check that global bootstrap was created
+            global_bootstrap = Path(self.temp_dir) / ".claude" / "orchestra" / "bootstrap.py"
+            self.assertTrue(global_bootstrap.exists(), "Global bootstrap should be created")
+            
+            # Verify the console showed global installation
+            console_calls = [str(call) for call in orchestra.console.print.call_args_list]
+            global_message = any("global" in call.lower() for call in console_calls)
+            self.assertTrue(global_message, "Should indicate global installation")
 
 
 class TestSubagentTemplates(unittest.TestCase):

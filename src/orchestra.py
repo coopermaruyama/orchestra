@@ -54,17 +54,69 @@ class Orchestra:
         commands_dir.mkdir(parents=True, exist_ok=True)
         scripts_dir.mkdir(parents=True, exist_ok=True)
 
-        # Copy the actual Python script
-        source_file = Path(__file__).parent / "extensions" / "task-monitor" / "task_monitor.py"
-        if not source_file.exists():
-            # If running as a single file, extract the embedded task-monitor
-            print("📦 Extracting task-monitor extension...")
-            self._extract_task_monitor(scripts_dir)
-        else:
-            shutil.copy(source_file, scripts_dir / "task_monitor.py")
+        # Install bootstrap script
+        bootstrap_source = Path(__file__).parent / "bootstrap.py"
+        bootstrap_dest = scripts_dir.parent / "bootstrap.py"
+        
+        # Create bootstrap script content if source doesn't exist
+        if not bootstrap_source.exists():
+            bootstrap_content = '''#!/usr/bin/env python3
+"""Orchestra Bootstrap Script"""
+import sys
+import subprocess
+import os
+from pathlib import Path
 
-        # Make executable
-        (scripts_dir / "task_monitor.py").chmod(0o755)
+def check_orchestra_installed():
+    try:
+        result = subprocess.run(["which", "orchestra"], capture_output=True, text=True, check=False)
+        return result.returncode == 0
+    except Exception:
+        return False
+
+def show_install_instructions():
+    flag_file = Path.home() / ".claude" / ".orchestra-install-shown"
+    if flag_file.exists():
+        return
+    print("=" * 60)
+    print("🎼 Orchestra not installed")
+    print("=" * 60)
+    print("\nThis project uses Orchestra extensions for Claude Code.")
+    print("\nTo install Orchestra globally:")
+    print("  pip install orchestra")
+    print("\nOr install from the project:")
+    print("  pip install -e .")
+    print("\nThen install the task-monitor extension:")
+    print("  orchestra install task-monitor")
+    print("\nFor more info: https://github.com/anthropics/orchestra")
+    print("=" * 60)
+    flag_file.parent.mkdir(parents=True, exist_ok=True)
+    flag_file.touch()
+
+def main():
+    if len(sys.argv) < 2:
+        print("Usage: bootstrap.py <command> [args...]")
+        sys.exit(1)
+    if not check_orchestra_installed():
+        show_install_instructions()
+        sys.exit(1)
+    command = ["orchestra"] + sys.argv[1:]
+    try:
+        result = subprocess.run(command)
+        sys.exit(result.returncode)
+    except Exception as e:
+        print(f"Error running orchestra: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
+'''
+            with open(bootstrap_dest, 'w') as f:
+                f.write(bootstrap_content)
+        else:
+            shutil.copy(bootstrap_source, bootstrap_dest)
+        
+        bootstrap_dest.chmod(0o755)
 
         # Install subagents for intelligent deviation detection
         self._install_subagents(extension, scope)
@@ -74,22 +126,24 @@ class Orchestra:
         task_dir.mkdir(parents=True, exist_ok=True)
 
         # Create individual command files
+        # Now using bootstrap script for better team collaboration
+        bootstrap_path = ".claude/orchestra/bootstrap.py"
         commands = {
             "start": {
                 "description": "Start a new task with intelligent guided setup",
-                "script": f"!python {scripts_dir / 'task_monitor.py'} start"
+                "script": f"!python {bootstrap_path} task start"
             },
             "status": {
                 "description": "Check current task progress and see what's been completed",
-                "script": f"!python {scripts_dir / 'task_monitor.py'} status"
+                "script": f"!python {bootstrap_path} task status"
             },
             "next": {
                 "description": "Show the next priority action to work on",
-                "script": f"!python {scripts_dir / 'task_monitor.py'} next"
+                "script": f"!python {bootstrap_path} task next"
             },
             "complete": {
                 "description": "Mark the current requirement as complete and see what's next",
-                "script": f"!python {scripts_dir / 'task_monitor.py'} complete"
+                "script": f"!python {bootstrap_path} task complete"
             }
         }
 
@@ -109,7 +163,7 @@ class Orchestra:
 
 Quick reminder of what you should be working on right now
 
-!python {scripts_dir / 'task_monitor.py'} focus"""
+!python {bootstrap_path} task focus"""
 
         with open(commands_dir / "focus.md", 'w') as f:
             f.write(focus_content)
@@ -123,7 +177,7 @@ Quick reminder of what you should be working on right now
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": f"python {scripts_dir / 'task_monitor.py'} hook PreToolUse"
+                                "command": f"python {bootstrap_path} hook PreToolUse"
                             }
                         ]
                     }
@@ -134,7 +188,7 @@ Quick reminder of what you should be working on right now
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": f"python {scripts_dir / 'task_monitor.py'} hook PostToolUse"
+                                "command": f"python {bootstrap_path} hook PostToolUse"
                             }
                         ]
                     }
@@ -144,7 +198,7 @@ Quick reminder of what you should be working on right now
                         "hooks": [
                             {
                                 "type": "command",
-                                "command": f"python {scripts_dir / 'task_monitor.py'} hook UserPromptSubmit"
+                                "command": f"python {bootstrap_path} hook UserPromptSubmit"
                             }
                         ]
                     }
@@ -175,9 +229,10 @@ Quick reminder of what you should be working on right now
         self.console.print(f"[bold]📁 Commands:[/bold]")
         self.console.print(f"   [dim]-[/dim] {task_dir}/*.md (sub-commands)")
         self.console.print(f"   [dim]-[/dim] {commands_dir / 'focus.md'}")
-        self.console.print(f"[bold]📦 Scripts:[/bold] {scripts_dir}")
+        self.console.print(f"[bold]🚀 Bootstrap:[/bold] {scripts_dir.parent / 'bootstrap.py'}")
         self.console.print(f"[bold]🪝 Hooks:[/bold] Configured in {settings_file}")
         self.console.print(f"\n[bold yellow]🎯 Start with:[/bold yellow] [cyan]/task start[/cyan]")
+        self.console.print(f"\n[dim]Note: Commands will work for team members even without Orchestra installed[/dim]")
 
     def _install_subagents(self, extension: str, scope: str) -> None:
         """Install subagents for an extension"""
@@ -203,19 +258,6 @@ Quick reminder of what you should be working on right now
                 
             if agent_count > 0:
                 self.console.print(f"[bold green]🤖 Installed {agent_count} subagents[/bold green] for intelligent deviation detection")
-        
-    def _extract_task_monitor(self, scripts_dir: Path) -> None:
-        """Extract embedded task-monitor code"""
-        # This is where the task_monitor.py code would be embedded
-        # For now, we'll create a stub that tells the user to download it
-        task_monitor_code = '''#!/usr/bin/env python3
-"""Task Monitor - Embedded in Orchestra"""
-print("Please download the full Orchestra package with extensions")
-print("Visit: https://github.com/your-org/orchestra")
-'''
-
-        with open(scripts_dir / "task_monitor.py", 'w') as f:
-            f.write(task_monitor_code)
 
     def list_extensions(self) -> None:
         """List installed extensions"""
