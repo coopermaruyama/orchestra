@@ -775,7 +775,7 @@ def main() -> None:
 
     elif command == "init":
         if len(sys.argv) < 4:
-            print("Usage: task_monitor.py init '<task>' '<req1>' '<req2>' ...")
+            print("Usage: orchestra task init '<task>' '<req1>' '<req2>' ...")
             return
 
         monitor.task = sys.argv[2]
@@ -860,7 +860,7 @@ def main() -> None:
 
     elif command == "status":
         if not monitor.task:
-            print("No task configured. Run: task_monitor.py init")
+            print("No task configured. Run: orchestra task init")
             return
 
         progress = monitor._get_progress()

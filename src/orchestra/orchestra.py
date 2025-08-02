@@ -13,30 +13,11 @@ from typing import Dict, Any
 from rich.console import Console
 from rich.table import Table
 
-def get_version() -> str:
-    """Get version from pyproject.toml"""
-    try:
-        # Try to find pyproject.toml
-        current_file = Path(__file__).resolve()
-        # Look for pyproject.toml in parent directories
-        for parent in current_file.parents:
-            pyproject_path = parent / "pyproject.toml"
-            if pyproject_path.exists():
-                with open(pyproject_path, 'r') as f:
-                    content = f.read()
-                    # Simple parsing for version
-                    for line in content.split('\n'):
-                        if line.strip().startswith('version ='):
-                            version = line.split('=')[1].strip().strip('"').strip("'")
-                            return version
-                break
-    except Exception:
-        pass
-    return "0.5.0"  # Fallback to current version
+
 
 class Orchestra:
     def __init__(self) -> None:
-        self.__version__ = get_version()
+        self.__version__ = "0.6.0"
         self.home = Path.home()
         self.global_dir = self.home / ".claude" / "commands"
         self.local_dir = Path(".claude") / "commands"
@@ -167,15 +148,15 @@ if [ "$1" = "hook" ]; then
     # Determine which extension is being called based on which scripts exist
     SCRIPT_DIR="$(dirname "$0")"
     MONITOR_SCRIPT=""
-    
+
     # Check for task monitor
     LOCAL_TASK="$SCRIPT_DIR/task/task_monitor.py"
     GLOBAL_TASK="$HOME/.claude/orchestra/task/task_monitor.py"
-    
+
     # Check for timemachine monitor
     LOCAL_TM="$SCRIPT_DIR/timemachine/timemachine_monitor.py"
     GLOBAL_TM="$HOME/.claude/orchestra/timemachine/timemachine_monitor.py"
-    
+
     # Priority: local task, global task, local timemachine, global timemachine
     if [ -f "$LOCAL_TASK" ]; then
         MONITOR_SCRIPT="$LOCAL_TASK"
@@ -456,7 +437,7 @@ description: {cmd_info['description']}
 
         self.console.print(f"[bold green]✅ Enabled {extension}[/bold green] ({scope} scope)")
         self.console.print(f"[bold]📁 Commands:[/bold]")
-        
+
         if extension == "task":
             self.console.print(f"   [dim]-[/dim] {commands_dir / 'task'}/*.md (sub-commands)")
             self.console.print(f"   [dim]-[/dim] {commands_dir / 'focus.md'}")
@@ -464,7 +445,7 @@ description: {cmd_info['description']}
         elif extension == "timemachine":
             self.console.print(f"   [dim]-[/dim] {commands_dir / 'timemachine'}/*.md (sub-commands)")
             start_cmd = "/timemachine list"
-        
+
         self.console.print(f"[bold]🚀 Bootstrap:[/bold] {scripts_dir.parent / 'bootstrap.sh'}")
         self.console.print(f"[bold]🪝 Hooks:[/bold] Configured in {settings_file}")
         self.console.print(f"\n[bold yellow]🎯 Start with:[/bold yellow] [cyan]{start_cmd}[/cyan]")
@@ -574,7 +555,7 @@ description: {cmd_info['description']}
             if is_orchestra_generated(focus_file, extension):
                 focus_file.unlink()
                 removed = True
-                
+
         elif extension == "timemachine":
             # Remove timemachine sub-commands
             tm_dir = commands_dir / "timemachine"
@@ -856,12 +837,12 @@ def main() -> None:
     elif command == "logs":
         # View extension logs
         import subprocess
-        
+
         # Parse arguments
         extension_filter = None
         tail_mode = False
         clear_logs = False
-        
+
         for arg in sys.argv[2:]:
             if arg == "--tail" or arg == "-f":
                 tail_mode = True
@@ -881,7 +862,7 @@ def main() -> None:
                 return
             elif not arg.startswith("-"):
                 extension_filter = arg
-        
+
         # Find log files
         log_patterns = []
         if extension_filter:
@@ -896,13 +877,13 @@ def main() -> None:
         else:
             # Look for all Orchestra logs
             log_patterns.extend(["task_monitor.log", "timemachine.log"])
-        
+
         # Search for log files in common temp directories
         import platform
-        
+
         log_files = []
         temp_roots = []
-        
+
         if platform.system() == "Darwin":  # macOS
             temp_roots.append("/var/folders")
             temp_roots.append("/tmp")
@@ -912,12 +893,12 @@ def main() -> None:
         elif platform.system() == "Windows":
             temp_roots.append(os.environ.get("TEMP", ""))
             temp_roots.append(os.environ.get("TMP", ""))
-        
+
         # Find log files
         for root in temp_roots:
             if not root or not os.path.exists(root):
                 continue
-                
+
             try:
                 # Use find command for efficiency
                 for pattern in log_patterns:
@@ -927,7 +908,7 @@ def main() -> None:
                     else:
                         # Unix-like find command
                         cmd = ["find", root, "-name", pattern, "-type", "f"]
-                    
+
                     result = subprocess.run(cmd, capture_output=True, text=True, stderr=subprocess.DEVNULL)
                     if result.returncode == 0 and result.stdout:
                         files = result.stdout.strip().split('\n')
@@ -943,24 +924,24 @@ def main() -> None:
                                         log_files.append(os.path.join(dirpath, filename))
                 except Exception:
                     pass
-        
+
         # Remove duplicates
         log_files = list(set(log_files))
-        
+
         if clear_logs:
             # Clear logs
             if not log_files:
                 console.print("[yellow]No Orchestra logs found to clear.[/yellow]")
                 return
-                
+
             console.print(f"[bold yellow]Found {len(log_files)} log file(s):[/bold yellow]")
             for log_file in log_files:
                 console.print(f"  [dim]-[/dim] {log_file}")
-            
+
             # Confirm
             console.print("\n[bold red]⚠️  This will delete all Orchestra logs.[/bold red]")
             response = console.input("Continue? [y/N]: ")
-            
+
             if response.lower() == 'y':
                 cleared = 0
                 for log_file in log_files:
@@ -969,25 +950,25 @@ def main() -> None:
                         cleared += 1
                     except Exception as e:
                         console.print(f"[red]Failed to delete {log_file}: {e}[/red]")
-                
+
                 console.print(f"[bold green]✅ Cleared {cleared} log file(s)[/bold green]")
             else:
                 console.print("[yellow]Cancelled.[/yellow]")
             return
-        
+
         if not log_files:
             console.print("[yellow]No Orchestra logs found.[/yellow]")
             console.print("[dim]Logs are created when extensions are used in Claude Code.[/dim]")
             console.print("[dim]Try running a command first, e.g., 'orchestra task status'[/dim]")
             return
-        
+
         # Display or tail logs
         if tail_mode:
             console.print(f"[bold green]📜 Following {len(log_files)} log file(s):[/bold green]")
             for log_file in log_files:
                 console.print(f"  [dim]-[/dim] {log_file}")
             console.print("\n[dim]Press Ctrl+C to stop...[/dim]\n")
-            
+
             # Use tail -f on the log files
             try:
                 if platform.system() == "Windows":
@@ -995,14 +976,14 @@ def main() -> None:
                     cmd = ["powershell", "-Command", f"Get-Content {' '.join(log_files)} -Wait"]
                 else:
                     cmd = ["tail", "-f"] + log_files
-                
+
                 subprocess.run(cmd)
             except KeyboardInterrupt:
                 console.print("\n[yellow]Stopped tailing logs.[/yellow]")
         else:
             # Display logs with nice formatting
             console.print(f"[bold green]📜 Orchestra Logs[/bold green] ({len(log_files)} file(s) found)\n")
-            
+
             for log_file in log_files:
                 # Extract extension name from log file
                 if "task_monitor.log" in log_file:
@@ -1014,10 +995,10 @@ def main() -> None:
                 else:
                     ext_name = "Unknown"
                     ext_color = "white"
-                
+
                 console.print(f"[bold {ext_color}]═══ {ext_name} ═══[/bold {ext_color}]")
                 console.print(f"[dim]{log_file}[/dim]")
-                
+
                 try:
                     with open(log_file, 'r') as f:
                         # Read last 50 lines by default
@@ -1025,7 +1006,7 @@ def main() -> None:
                         if len(lines) > 50:
                             console.print(f"[dim]... showing last 50 lines (file has {len(lines)} total) ...[/dim]")
                             lines = lines[-50:]
-                        
+
                         for line in lines:
                             line = line.rstrip()
                             # Color code log levels
@@ -1039,12 +1020,12 @@ def main() -> None:
                                 console.print(f"[blue]{line}[/blue]")
                             else:
                                 console.print(line)
-                        
+
                 except Exception as e:
                     console.print(f"[red]Error reading log: {e}[/red]")
-                
+
                 console.print()  # Empty line between logs
-            
+
             console.print("[dim]Tip: Use 'orchestra logs --tail' to follow logs in real-time[/dim]")
 
     else:
