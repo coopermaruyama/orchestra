@@ -12,24 +12,24 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
-def run_all_tests():
+def run_all_tests() -> None:
     """Run all tests in the tests directory"""
     # Discover and run all tests
     loader = unittest.TestLoader()
     start_dir = Path(__file__).parent
     suite = loader.discover(str(start_dir), pattern='test_*.py')
-    
+
     # Run tests with verbose output
     runner = unittest.TextTestRunner(verbosity=2)
     result = runner.run(suite)
-    
+
     # Return exit code based on test results
     return 0 if result.wasSuccessful() else 1
 
-def run_specific_test(test_name):
+def run_specific_test(test_name: str) -> None:
     """Run a specific test module"""
     loader = unittest.TestLoader()
-    
+
     try:
         # Try to load the specific test module
         suite = loader.loadTestsFromName(test_name)
@@ -48,5 +48,5 @@ if __name__ == '__main__':
     else:
         # Run all tests
         exit_code = run_all_tests()
-    
+
     sys.exit(exit_code)

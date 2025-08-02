@@ -4,47 +4,53 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Since this is an extension for Claude Code, important documentation references are included at:
 
-@docs/configuration-reference.md
-@docs/slash-commands-reference.md
-@docs/hooks-reference.md
+@docs/claude-docs/configuration-reference.md
+@docs/claude-docs/slash-commands-reference.md
+@docs/claude-docs/hooks-reference.md
+@docs/claude-docs/subagents-reference.md
+@docs/claude-docs/tool-reference.md
 
 ## Project Overview
 
-Orchestra is a lightweight extension manager for Claude Code that helps developers stay focused and productive. It consists of two main components:
+Orchestra is a lightweight extension manager for Claude Code that helps developers stay focused and productive. It consists of:
 
-1. **Orchestra CLI** (`orchestra.py`) - Extension installer and manager
-2. **Task Monitor Extension** (`extensions/task-monitor/task_monitor.py`) - Prevents scope creep and tracks progress
+1. **Orchestra CLI** (`orchestra.py`) - Extension installer and manager with built-in log viewer
+2. **Task Monitor Extension** (`extensions/task/task_monitor.py`) - Prevents scope creep and tracks progress
+3. **TimeMachine Extension** (`extensions/timemachine/timemachine_monitor.py`) - Automatic git checkpointing for every conversation turn
 
 ## Development Commands
 
 ### Testing and Code Quality
 ```bash
 # Run tests
-pytest
+uv run pytest
 
 # Run tests with coverage
-pytest --cov=orchestra --cov-report=term-missing
+uv run pytest --cov=orchestra --cov-report=term-missing
 
 # Code formatting
-black .
+uv run black .
 
 # Linting
-ruff check .
+uv run ruff check .
 
 # Type checking
-mypy src/
+uv run mypy src/
 ```
 
 ### Building and Installation
 ```bash
 # Install locally for development
-pip install -e .
+uv pip install -e .
 
-# Build wheel
-python -m build
+# Build wheel and source distribution
+uv build
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies (handled automatically by uv)
+uv sync
+
+# Install specific dependency groups
+uv sync --extra dev
 ```
 
 ### Running Orchestra
@@ -53,14 +59,20 @@ pip install -r requirements.txt
 chmod +x orchestra.py
 ./orchestra.py
 
-# Install task-monitor extension locally
-./orchestra.py install task-monitor
+# Enable task-monitor extension locally
+./orchestra.py enable task-monitor
 
-# Install globally for all projects
-./orchestra.py install task-monitor --global
+# Enable globally for all projects
+./orchestra.py enable task-monitor --global
 
-# List installed extensions
+# List enabled extensions
 ./orchestra.py list
+
+# View extension logs
+./orchestra.py logs              # View all logs
+./orchestra.py logs task         # View task monitor logs only
+./orchestra.py logs --tail       # Follow logs in real-time
+./orchestra.py logs --clear      # Clear all logs
 ```
 
 ## Architecture
@@ -102,10 +114,10 @@ class DeviationType(Enum):
 ## Task Monitor Usage
 
 ### Slash Commands
-- `/task start` - Interactive task setup with type-specific questions
-- `/task status` - Show current progress and requirements
-- `/task next` - Display next priority action
-- `/task complete` - Mark current requirement as complete
+- `/task:start` - Interactive task setup with type-specific questions
+- `/task:status` - Show current progress and requirements
+- `/task:next` - Display next priority action
+- `/task:complete` - Mark current requirement as complete
 - `/focus` - Quick focus reminder
 
 ### Hook Behaviors

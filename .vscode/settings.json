@@ -1,4 +1,5 @@
 {
+  "biome.enabled": false,
   "python.analysis.autoImportCompletions": true,
   "python.testing.pytestArgs": [
     "tests"

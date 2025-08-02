@@ -1,0 +1,16 @@
+{
+  "enabled": true,
+  "current_session": "",
+  "checkpoints": [
+    {
+      "id": "test-1",
+      "prompt_preview": "Test prompt"
+    }
+  ],
+  "settings": {
+    "max_checkpoints": 100,
+    "auto_cleanup": true,
+    "include_untracked": false
+  },
+  "updated": "2025-08-02T07:08:00.207293"
+}

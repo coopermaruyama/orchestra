@@ -1,0 +1,9 @@
+[
+  {
+    "session_id": "0b85f1c1-6523-41ad-868c-9764374552a2",
+    "transcript_path": "/Users/coopermaruyama/.claude/projects/-Users-coopermaruyama-Developer-orchestra/0b85f1c1-6523-41ad-868c-9764374552a2.jsonl",
+    "cwd": "/Users/coopermaruyama/Developer/orchestra",
+    "hook_event_name": "UserPromptSubmit",
+    "prompt": "\nYou are a off topic detector specialized in software development task analysis.\n\n\nAnalyze this command for off topic:\n\nCommand: \" \"\nTask: \"[UI/UX] install with a one-liner like `curl someurl  sh`\"\nCurrent Progress: 33% complete\nCurrent Focus: Implement main functionality\n\nRequirements:\n  \u23f3 Implement main functionality (Priority 1)\n  \u2705 Handle errors gracefully (Priority 1)\n  \u23f3 update docs (Priority 2)\n\nReturn JSON with your analysis.\n\nAnalyze the command and respond with JSON in this exact format:\n{\n    \"is_deviation\": true/false,\n    \"type\": \"off_topic\",\n    \"severity\": 1-5,\n    \"message\": \"Brief explanation of the issue\",\n    \"suggestion\": \"What to do instead\"\n}\n\nIf no deviation is detected, return {\"is_deviation\": false}.\n"
+  }
+]

@@ -134,7 +134,7 @@ class TestCommandLineInterface(unittest.TestCase):
 
     def get_task_monitor_path(self) -> str:
         """Get path to task monitor script"""
-        return str(Path(__file__).parent.parent / "src" / "extensions" / "task-monitor" / "task_monitor.py")
+        return str(Path(__file__).parent.parent / "src" / "orchestra" / "extensions" / "task_monitor" / "task_monitor.py")
 
     def test_init_command(self) -> None:
         """Test task initialization via command line"""
@@ -181,19 +181,19 @@ class TestCommandLineInterface(unittest.TestCase):
         self.assertIn("⏳ Req 2", result.stdout)
 
     def test_hook_command_json_input(self) -> None:
-        """Test that hook command processes JSON input correctly"""
+        """Test that Stop hook processes JSON input correctly"""
         script_path = self.get_task_monitor_path()
 
-        # Initialize a task first
+        # Initialize a task first with incomplete requirements
         subprocess.run([
             sys.executable, script_path, "init",
             "Fix bug", "Debug issue", "Implement fix"
         ], capture_output=True)
 
-        # Test PreToolUse hook with scope creep
-        hook_input = '{"tool_name": "Bash", "tool_input": {"command": "beautify the UI layout"}}'
+        # Test Stop hook with incomplete requirements
+        hook_input = '{"session_id": "test123", "transcript_path": "/tmp/test", "hook_event_name": "Stop", "stop_hook_active": false}'
         result = subprocess.run([
-            sys.executable, script_path, "hook", "PreToolUse"
+            sys.executable, script_path, "hook", "Stop"
         ], input=hook_input, capture_output=True, text=True)
 
         self.assertEqual(result.returncode, 0)
@@ -201,9 +201,10 @@ class TestCommandLineInterface(unittest.TestCase):
         # Parse output JSON
         try:
             output = json.loads(result.stdout.strip().split('\n')[-1])  # Last line should be JSON
-            # Should block severe scope creep with Claude Code format
-            self.assertIn("hookSpecificOutput", output)
-            self.assertEqual(output["hookSpecificOutput"]["permissionDecision"], "deny")
+            # Should block stopping when requirements are incomplete
+            self.assertIn("decision", output)
+            self.assertEqual(output["decision"], "block")
+            self.assertIn("reason", output)
         except json.JSONDecodeError:
             self.fail("Hook output should be valid JSON")
 
@@ -227,7 +228,7 @@ class TestEndToEndScenarios(unittest.TestCase):
 
     def test_bug_fix_workflow(self) -> None:
         """Test a complete bug fix workflow"""
-        script_path = str(Path(__file__).parent.parent / "src" / "extensions" / "task-monitor" / "task_monitor.py")
+        script_path = str(Path(__file__).parent.parent / "src" / "orchestra" / "extensions" / "task_monitor" / "task_monitor.py")
 
         # 1. Initialize bug fix task
         result = subprocess.run([
@@ -248,37 +249,33 @@ class TestEndToEndScenarios(unittest.TestCase):
 
         self.assertIn("0% complete", result.stdout)
 
-        # 3. Test that scope creep is blocked early
-        hook_input = '{"tool_name": "Bash", "tool_input": {"command": "refactor the entire authentication system"}}'
+        # 3. Test Stop hook with incomplete requirements - should block stopping
+        hook_input = '{"session_id": "test123", "transcript_path": "/tmp/test", "hook_event_name": "Stop", "stop_hook_active": false}'
         result = subprocess.run([
-            sys.executable, script_path, "hook", "PreToolUse"
+            sys.executable, script_path, "hook", "Stop"
         ], input=hook_input, capture_output=True, text=True)
 
-        # Should block this scope creep
+        # Should block stopping since requirements are incomplete
         output_lines = result.stdout.strip().split('\n')
         json_output = json.loads(output_lines[-1])
-        self.assertEqual(json_output["hookSpecificOutput"]["permissionDecision"], "deny")
+        self.assertEqual(json_output["decision"], "block")
+        self.assertIn("reason", json_output)
 
-        # 4. Test that valid work is allowed
-        hook_input = '{"tool_name": "Bash", "tool_input": {"command": "test login with different timeout values"}}'
+        # 4. Complete all requirements
+        for _ in range(4):  # Complete all 4 requirements
+            result = subprocess.run([
+                sys.executable, script_path, "complete"
+            ], capture_output=True, text=True)
+
+        # 5. Test Stop hook with completed requirements - should allow stopping
         result = subprocess.run([
-            sys.executable, script_path, "hook", "PreToolUse"
+            sys.executable, script_path, "hook", "Stop"
         ], input=hook_input, capture_output=True, text=True)
 
-        # Should allow this work (no JSON output or no deny permission)
+        # Should allow stopping since all requirements are complete
         output_lines = result.stdout.strip().split('\n')
         json_output = json.loads(output_lines[-1])
-        if "hookSpecificOutput" in json_output:
-            self.assertNotEqual(json_output["hookSpecificOutput"].get("permissionDecision"), "deny")
-
-        # 5. Test complete command
-        result = subprocess.run([
-            sys.executable, script_path, "complete"
-        ], capture_output=True, text=True)
-
-        self.assertIn("Completed:", result.stdout)
-        # Should show progress (exact format may vary)
-        self.assertTrue(any(x in result.stdout for x in ["25%", "25% complete", "Progress: 25%"]))
+        self.assertIsNone(json_output["decision"])
 
 
 if __name__ == '__main__':
