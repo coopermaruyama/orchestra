@@ -28,7 +28,14 @@ class BaseExtension(ABC):
             working_dir: Working directory for the extension
         """
         self.working_dir = working_dir or os.getcwd()
-        self.config_file = config_file or os.path.join(self.working_dir, self.get_default_config_filename())
+        
+        # If no config file specified, use the new orchestra directory structure
+        if config_file is None:
+            orchestra_dir = os.path.join(self.working_dir, '.claude', 'orchestra')
+            os.makedirs(orchestra_dir, exist_ok=True)
+            config_file = os.path.join(orchestra_dir, self.get_default_config_filename())
+        
+        self.config_file = config_file
 
     @abstractmethod
     def get_default_config_filename(self) -> str:

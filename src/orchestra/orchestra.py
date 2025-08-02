@@ -5,6 +5,7 @@ Orchestrate your Claude Code workflow with focused extensions
 """
 
 import sys
+import os
 import json
 import shutil
 from pathlib import Path
@@ -53,11 +54,22 @@ class Orchestra:
                     "Tracks progress automatically",
                     "Guides through requirements"
                 ]
+            },
+            "timemachine": {
+                "name": "TimeMachine",
+                "description": "Automatic git checkpointing for every conversation turn. Travel back in time to any previous state with full prompt history.",
+                "commands": ["timemachine list", "timemachine checkout", "timemachine view", "timemachine rollback"],
+                "features": [
+                    "Checkpoint every user prompt",
+                    "View conversation history",
+                    "Rollback to any previous state",
+                    "Track file modifications per turn"
+                ]
             }
         }
 
-    def install(self, extension: str, scope: str = "global") -> None:
-        """Install an Orchestra extension"""
+    def enable(self, extension: str, scope: str = "global") -> None:
+        """Enable an Orchestra extension"""
         if extension not in self.extensions:
             self.console.print(f"[bold red]❌ Unknown extension:[/bold red] {extension}")
             self.console.print("[yellow]Available extensions:[/yellow]")
@@ -65,7 +77,7 @@ class Orchestra:
                 self.console.print(f"  • {ext_id} - {ext_info['name']}")
             return
 
-        # Determine installation directory
+        # Determine enablement directory
         if scope == "global":
             commands_dir = self.global_dir
             scripts_dir = self.home / ".claude" / "orchestra" / extension
@@ -73,11 +85,11 @@ class Orchestra:
             commands_dir = self.local_dir
             scripts_dir = Path(".claude") / "orchestra" / extension
 
-            # Warning for project scope installation
-            self.console.print("\n[bold yellow]⚠️  Warning: Project scope installation[/bold yellow]")
-            self.console.print("[yellow]Installing to project scope (.claude/commands/) may conflict with global installations.[/yellow]")
+            # Warning for project scope enablement
+            self.console.print("\n[bold yellow]⚠️  Warning: Project scope enablement[/bold yellow]")
+            self.console.print("[yellow]Enabling in project scope (.claude/commands/) may conflict with global enablement.[/yellow]")
             self.console.print("[yellow]Claude Code does not support conflicts between user and project level commands.[/yellow]")
-            self.console.print("[yellow]Consider using global installation (default) unless project-specific commands are required.[/yellow]\n")
+            self.console.print("[yellow]Consider using global enablement (default) unless project-specific commands are required.[/yellow]\n")
 
         # Create directories
         commands_dir.mkdir(parents=True, exist_ok=True)
@@ -128,8 +140,8 @@ show_install_instructions() {
     echo "Or install from the project:"
     echo "  pip install -e ."
     echo ""
-    echo "Then install the task extension:"
-    echo "  orchestra install task"
+    echo "Then enable the task extension:"
+    echo "  orchestra enable task"
     echo ""
     echo "For more info: https://github.com/anthropics/orchestra"
     echo "============================================================"
@@ -152,22 +164,34 @@ if [ "$1" = "hook" ]; then
         exit 127
     fi
 
-    # Find the task_monitor.py script
+    # Determine which extension is being called based on which scripts exist
     SCRIPT_DIR="$(dirname "$0")"
-    LOCAL_SCRIPT="$SCRIPT_DIR/task/task_monitor.py"
-    GLOBAL_SCRIPT="$HOME/.claude/orchestra/task/task_monitor.py"
-
-    if [ -f "$LOCAL_SCRIPT" ]; then
-        TASK_MONITOR="$LOCAL_SCRIPT"
-    elif [ -f "$GLOBAL_SCRIPT" ]; then
-        TASK_MONITOR="$GLOBAL_SCRIPT"
+    MONITOR_SCRIPT=""
+    
+    # Check for task monitor
+    LOCAL_TASK="$SCRIPT_DIR/task/task_monitor.py"
+    GLOBAL_TASK="$HOME/.claude/orchestra/task/task_monitor.py"
+    
+    # Check for timemachine monitor
+    LOCAL_TM="$SCRIPT_DIR/timemachine/timemachine_monitor.py"
+    GLOBAL_TM="$HOME/.claude/orchestra/timemachine/timemachine_monitor.py"
+    
+    # Priority: local task, global task, local timemachine, global timemachine
+    if [ -f "$LOCAL_TASK" ]; then
+        MONITOR_SCRIPT="$LOCAL_TASK"
+    elif [ -f "$GLOBAL_TASK" ]; then
+        MONITOR_SCRIPT="$GLOBAL_TASK"
+    elif [ -f "$LOCAL_TM" ]; then
+        MONITOR_SCRIPT="$LOCAL_TM"
+    elif [ -f "$GLOBAL_TM" ]; then
+        MONITOR_SCRIPT="$GLOBAL_TM"
     else
-        echo "Error: task_monitor.py not found" >&2
+        echo "Error: No monitor script found" >&2
         exit 1
     fi
 
     # Execute the hook
-    exec "$PYTHON" "$TASK_MONITOR" "$@"
+    exec "$PYTHON" "$MONITOR_SCRIPT" "$@"
 fi
 
 # For regular commands, check if orchestra is installed
@@ -184,106 +208,152 @@ exec orchestra "$@"
 
         bootstrap_dest.chmod(0o755)
 
-        # Copy the task_monitor.py script and its dependencies
+        # Copy the extension script and its dependencies
         if extension == "task":
-            task_monitor_source = Path(__file__).parent / "extensions" / "task" / "task_monitor.py"
-            task_monitor_dest = scripts_dir / "task_monitor.py"
-            
-            # Copy main script
-            if task_monitor_source.exists():
-                shutil.copy(task_monitor_source, task_monitor_dest)
-                task_monitor_dest.chmod(0o755)
-            else:
-                self.console.print(f"[bold red]⚠️ Warning:[/bold red] task_monitor.py not found at {task_monitor_source}")
-                return
-            
-            # Copy orchestra.common library for dependencies
-            common_source = Path(__file__).parent / "common"
-            orchestra_dest = scripts_dir / "orchestra"
-            common_dest = orchestra_dest / "common"
-            
-            if common_source.exists():
-                # Create orchestra package directory
-                orchestra_dest.mkdir(exist_ok=True)
-                
-                # Create orchestra/__init__.py
-                (orchestra_dest / "__init__.py").write_text('"""Orchestra package"""')
-                
-                # Copy common directory
-                if common_dest.exists():
-                    shutil.rmtree(common_dest)
-                shutil.copytree(common_source, common_dest)
-                
-                # Make git-wip executable
-                git_wip_path = common_dest / "git-wip"
-                if git_wip_path.exists():
-                    git_wip_path.chmod(0o755)
-                    self.console.print(f"[dim]🔧 Made git-wip executable[/dim]")
-                
-                self.console.print(f"[dim]📦 Bundled orchestra.common library[/dim]")
-            else:
-                self.console.print(f"[bold red]⚠️ Warning:[/bold red] orchestra.common not found at {common_source}")
+            monitor_source = Path(__file__).parent / "extensions" / "task" / "task_monitor.py"
+            monitor_dest = scripts_dir / "task_monitor.py"
+        elif extension == "timemachine":
+            monitor_source = Path(__file__).parent / "extensions" / "timemachine" / "timemachine_monitor.py"
+            monitor_dest = scripts_dir / "timemachine_monitor.py"
+        else:
+            self.console.print(f"[bold red]⚠️ Warning:[/bold red] No monitor script configured for {extension}")
+            return
+
+        # Copy main script
+        if monitor_source.exists():
+            shutil.copy(monitor_source, monitor_dest)
+            monitor_dest.chmod(0o755)
+        else:
+            self.console.print(f"[bold red]⚠️ Warning:[/bold red] {monitor_source.name} not found at {monitor_source}")
+            return
+
+        # Copy orchestra.common library for dependencies
+        common_source = Path(__file__).parent / "common"
+        orchestra_dest = scripts_dir / "orchestra"
+        common_dest = orchestra_dest / "common"
+
+        if common_source.exists():
+            # Create orchestra package directory
+            orchestra_dest.mkdir(exist_ok=True)
+
+            # Create orchestra/__init__.py
+            (orchestra_dest / "__init__.py").write_text('"""Orchestra package"""')
+
+            # Copy common directory
+            if common_dest.exists():
+                shutil.rmtree(common_dest)
+            shutil.copytree(common_source, common_dest)
+
+            # Make git-wip executable
+            git_wip_path = common_dest / "git-wip"
+            if git_wip_path.exists():
+                git_wip_path.chmod(0o755)
+                self.console.print(f"[dim]🔧 Made git-wip executable[/dim]")
+
+            self.console.print(f"[dim]📦 Bundled orchestra.common library[/dim]")
+        else:
+            self.console.print(f"[bold red]⚠️ Warning:[/bold red] orchestra.common not found at {common_source}")
 
         # Install subagents for intelligent deviation detection
         self._install_subagents(extension, scope)
 
-        # Create the task directory for sub-commands
-        task_dir = commands_dir / "task"
-        task_dir.mkdir(parents=True, exist_ok=True)
-
-        # Create individual command files
-        # Now using bootstrap script for better team collaboration
+        # Create extension-specific commands
         if scope == "global":
             bootstrap_path = "$HOME/.claude/orchestra/bootstrap.sh"
         else:
             bootstrap_path = ".claude/orchestra/bootstrap.sh"
-        commands = {
-            "start": {
-                "description": "Start a new task with intelligent guided setup",
-                "script": f"!sh {bootstrap_path} task start"
-            },
-            "progress": {
-                "description": "Check current task progress and see what's been completed",
-                "script": f"!sh {bootstrap_path} task status"
-            },
-            "next": {
-                "description": "Show the next priority action to work on",
-                "script": f"!sh {bootstrap_path} task next"
-            },
-            "complete": {
-                "description": "Mark the current requirement as complete and see what's next",
-                "script": f"!sh {bootstrap_path} task complete"
-            }
-        }
 
-        # Write individual command files
-        for cmd_name, cmd_info in commands.items():
-            cmd_content = f"""---
+        if extension == "task":
+            # Create the task directory for sub-commands
+            task_dir = commands_dir / "task"
+            task_dir.mkdir(parents=True, exist_ok=True)
+
+            commands = {
+                "start": {
+                    "description": "Start a new task with intelligent guided setup",
+                    "script": f"!sh {bootstrap_path} task start"
+                },
+                "progress": {
+                    "description": "Check current task progress and see what's been completed",
+                    "script": f"!sh {bootstrap_path} task status"
+                },
+                "next": {
+                    "description": "Show the next priority action to work on",
+                    "script": f"!sh {bootstrap_path} task next"
+                },
+                "complete": {
+                    "description": "Mark the current requirement as complete and see what's next",
+                    "script": f"!sh {bootstrap_path} task complete"
+                }
+            }
+
+            # Write individual command files
+            for cmd_name, cmd_info in commands.items():
+                cmd_content = f"""---
 allowed-tools: Bash(*)
 description: {cmd_info['description']}
 ---
 
 {cmd_info['script']}
 
-<!-- AUTO-GENERATED BY ORCHESTRA: task -->"""
+<!-- AUTO-GENERATED BY ORCHESTRA: {extension} -->"""
 
-            with open(task_dir / f"{cmd_name}.md", 'w') as f:
-                f.write(cmd_content)
+                with open(task_dir / f"{cmd_name}.md", 'w') as f:
+                    f.write(cmd_content)
 
-        # Also create a /focus command at the root level
-        focus_content = f"""---
+            # Also create a /focus command at the root level
+            focus_content = f"""---
 allowed-tools: Bash(*)
 description: Quick reminder of what you should be working on right now
 ---
 
 !sh {bootstrap_path} task focus
 
-<!-- AUTO-GENERATED BY ORCHESTRA: task -->"""
+<!-- AUTO-GENERATED BY ORCHESTRA: {extension} -->"""
 
-        with open(commands_dir / "focus.md", 'w') as f:
-            f.write(focus_content)
+            with open(commands_dir / "focus.md", 'w') as f:
+                f.write(focus_content)
+
+        elif extension == "timemachine":
+            # Create the timemachine directory for sub-commands
+            tm_dir = commands_dir / "timemachine"
+            tm_dir.mkdir(parents=True, exist_ok=True)
+
+            commands = {
+                "list": {
+                    "description": "View a list of conversation checkpoints",
+                    "script": f"!sh {bootstrap_path} timemachine list"
+                },
+                "checkout": {
+                    "description": "Checkout a specific checkpoint by ID",
+                    "script": f"!sh {bootstrap_path} timemachine checkout $ARGUMENTS"
+                },
+                "view": {
+                    "description": "View full details of a checkpoint",
+                    "script": f"!sh {bootstrap_path} timemachine view $ARGUMENTS"
+                },
+                "rollback": {
+                    "description": "Rollback n conversation turns",
+                    "script": f"!sh {bootstrap_path} timemachine rollback $ARGUMENTS"
+                }
+            }
+
+            # Write individual command files
+            for cmd_name, cmd_info in commands.items():
+                cmd_content = f"""---
+allowed-tools: Bash(*)
+description: {cmd_info['description']}
+---
+
+{cmd_info['script']}
+
+<!-- AUTO-GENERATED BY ORCHESTRA: {extension} -->"""
+
+                with open(tm_dir / f"{cmd_name}.md", 'w') as f:
+                    f.write(cmd_content)
 
         # Create hooks configuration for Claude Code settings format
+        # Both extensions use the same hooks - the bootstrap script determines which one runs
         hooks_config = {
             "hooks": {
                 "PreToolUse": [
@@ -318,28 +388,28 @@ description: Quick reminder of what you should be working on right now
                         ]
                     }
                 ],
-                "TodoWrite": [
-                    {
-                        "matcher": "*",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": f"sh {bootstrap_path} hook TodoWrite"
-                            }
-                        ]
-                    }
-                ],
-                "Task": [
-                    {
-                        "matcher": "*",
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": f"sh {bootstrap_path} hook Task"
-                            }
-                        ]
-                    }
-                ],
+                # "TodoWrite": [
+                #     {
+                #         "matcher": "*",
+                #         "hooks": [
+                #             {
+                #                 "type": "command",
+                #                 "command": f"sh {bootstrap_path} hook TodoWrite"
+                #             }
+                #         ]
+                #     }
+                # ],
+                # "Task": [
+                #     {
+                #         "matcher": "*",
+                #         "hooks": [
+                #             {
+                #                 "type": "command",
+                #                 "command": f"sh {bootstrap_path} hook Task"
+                #             }
+                #         ]
+                #     }
+                # ],
                 "Stop": [
                     {
                         "hooks": [
@@ -384,13 +454,20 @@ description: Quick reminder of what you should be working on right now
         with open(settings_file, 'w') as f:
             json.dump(existing_settings, f, indent=2)
 
-        self.console.print(f"[bold green]✅ Installed task[/bold green] ({scope} scope)")
+        self.console.print(f"[bold green]✅ Enabled {extension}[/bold green] ({scope} scope)")
         self.console.print(f"[bold]📁 Commands:[/bold]")
-        self.console.print(f"   [dim]-[/dim] {task_dir}/*.md (sub-commands)")
-        self.console.print(f"   [dim]-[/dim] {commands_dir / 'focus.md'}")
+        
+        if extension == "task":
+            self.console.print(f"   [dim]-[/dim] {commands_dir / 'task'}/*.md (sub-commands)")
+            self.console.print(f"   [dim]-[/dim] {commands_dir / 'focus.md'}")
+            start_cmd = "/task start"
+        elif extension == "timemachine":
+            self.console.print(f"   [dim]-[/dim] {commands_dir / 'timemachine'}/*.md (sub-commands)")
+            start_cmd = "/timemachine list"
+        
         self.console.print(f"[bold]🚀 Bootstrap:[/bold] {scripts_dir.parent / 'bootstrap.sh'}")
         self.console.print(f"[bold]🪝 Hooks:[/bold] Configured in {settings_file}")
-        self.console.print(f"\n[bold yellow]🎯 Start with:[/bold yellow] [cyan]/task start[/cyan]")
+        self.console.print(f"\n[bold yellow]🎯 Start with:[/bold yellow] [cyan]{start_cmd}[/cyan]")
         self.console.print(f"\n[dim]Note: Commands will work for team members even without Orchestra installed[/dim]")
 
     def _install_subagents(self, extension: str, scope: str) -> None:
@@ -419,7 +496,7 @@ description: Quick reminder of what you should be working on right now
                 self.console.print(f"[bold green]🤖 Installed {agent_count} subagents[/bold green] for intelligent deviation detection")
 
     def list_extensions(self) -> None:
-        """List installed extensions"""
+        """List enabled extensions"""
         self.console.print("[bold blue]🎼 Orchestra Extensions[/bold blue]\n")
 
         # Check global extensions
@@ -440,7 +517,7 @@ description: Quick reminder of what you should be working on right now
                     self.console.print(f"  [green]•[/green] {ext}")
                 self.console.print()
 
-        self.console.print("[bold yellow]Available to install:[/bold yellow]")
+        self.console.print("[bold yellow]Available to enable:[/bold yellow]")
         for ext_id, ext_info in self.extensions.items():
             # Check if already installed
             local_installed = (self.local_dir / "task" if ext_id == "task" else self.local_dir / ext_id).exists()
@@ -449,8 +526,8 @@ description: Quick reminder of what you should be working on right now
             if not local_installed and not global_installed:
                 self.console.print(f"  [dim]•[/dim] {ext_id} : [italic]{ext_info['description'][:60]}...[/italic]")
 
-    def uninstall(self, extension: str, scope: str = "global") -> None:
-        """Uninstall an extension"""
+    def disable(self, extension: str, scope: str = "global") -> None:
+        """Disable an extension"""
         if scope == "global":
             commands_dir = self.global_dir
             scripts_dir = self.home / ".claude" / "orchestra" / extension
@@ -497,6 +574,21 @@ description: Quick reminder of what you should be working on right now
             if is_orchestra_generated(focus_file, extension):
                 focus_file.unlink()
                 removed = True
+                
+        elif extension == "timemachine":
+            # Remove timemachine sub-commands
+            tm_dir = commands_dir / "timemachine"
+            if tm_dir.exists() and tm_dir.is_dir():
+                removed_count = 0
+                for cmd_file in tm_dir.glob("*.md"):
+                    if is_orchestra_generated(cmd_file, extension):
+                        cmd_file.unlink()
+                        removed_count += 1
+                        removed = True
+
+                # Remove the timemachine directory if it's empty
+                if removed_count > 0 and not any(tm_dir.iterdir()):
+                    tm_dir.rmdir()
 
         # Remove subagents if they were generated by Orchestra
         if agents_dir.exists() and extension == "task":
@@ -570,7 +662,7 @@ description: Quick reminder of what you should be working on right now
                 self.console.print(f"[yellow]⚠️ Warning: Could not clean up hooks from settings.json: {e}[/yellow]")
 
         if removed:
-            self.console.print(f"[bold green]✅ Uninstalled {extension}[/bold green]")
+            self.console.print(f"[bold green]✅ Disabled {extension}[/bold green]")
         else:
             self.console.print(f"[bold red]❌ Extension not found:[/bold red] {extension}")
 
@@ -590,10 +682,12 @@ def main() -> None:
         commands_table.add_column("Description")
 
         console.print("[bold yellow]Commands:[/bold yellow]")
-        commands_table.add_row("install <extension> [--project]", "Install an extension (default: global)")
-        commands_table.add_row("uninstall <extension> [--project]", "Uninstall an extension (default: global)")
-        commands_table.add_row("list", "List installed extensions")
+        commands_table.add_row("enable <extension> [--project]", "Enable an extension (default: global)")
+        commands_table.add_row("disable <extension> [--project]", "Disable an extension (default: global)")
+        commands_table.add_row("list", "List enabled extensions")
+        commands_table.add_row("logs [extension] [options]", "View or manage extension logs")
         commands_table.add_row("task <subcommand>", "Run task monitor commands")
+        commands_table.add_row("timemachine <subcommand>", "Run timemachine commands")
         console.print(commands_table)
 
         # Task subcommands
@@ -608,6 +702,18 @@ def main() -> None:
         task_table.add_row("complete", "Mark current requirement done")
         task_table.add_row("focus", "Quick focus reminder")
         console.print(task_table)
+
+        # TimeMachine subcommands
+        console.print("\n[bold yellow]TimeMachine Commands:[/bold yellow]")
+        tm_table = Table(show_header=False, box=None, padding=(0, 2))
+        tm_table.add_column("Subcommand", style="bold green")
+        tm_table.add_column("Description")
+
+        tm_table.add_row("list", "View conversation checkpoints")
+        tm_table.add_row("checkout <id>", "Checkout a specific checkpoint")
+        tm_table.add_row("view <id>", "View checkpoint details")
+        tm_table.add_row("rollback <n>", "Rollback n conversation turns")
+        console.print(tm_table)
 
         # Available Extensions
         console.print("\n[bold yellow]Available Extensions:[/bold yellow]")
@@ -626,8 +732,8 @@ def main() -> None:
 
         # Examples
         console.print("\n[bold yellow]Examples:[/bold yellow]")
-        console.print("  [dim]$[/dim] orchestra install task")
-        console.print("  [dim]$[/dim] orchestra install task --project")
+        console.print("  [dim]$[/dim] orchestra enable task")
+        console.print("  [dim]$[/dim] orchestra enable task --project")
         console.print("  [dim]$[/dim] orchestra task start")
         console.print("  [dim]$[/dim] orchestra task status\n")
         return
@@ -637,25 +743,25 @@ def main() -> None:
     if command == "version":
         console.print(f"[bold blue]Orchestra Version:[/bold blue] {orchestra.__version__}")
         return
-    if command == "install":
+    if command == "enable":
         if len(sys.argv) < 3:
-            console.print("[bold yellow]Usage:[/bold yellow] orchestra install <extension> [--project]")
-            console.print("[dim]Default: Installs globally to ~/.claude/commands/[/dim]")
+            console.print("[bold yellow]Usage:[/bold yellow] orchestra enable <extension> [--project]")
+            console.print("[dim]Default: Enables globally in ~/.claude/commands/[/dim]")
             return
 
         extension = sys.argv[2]
         scope = "local" if "--project" in sys.argv else "global"
-        orchestra.install(extension, scope)
+        orchestra.enable(extension, scope)
 
-    elif command == "uninstall":
+    elif command == "disable":
         if len(sys.argv) < 3:
-            console.print("[bold yellow]Usage:[/bold yellow] orchestra uninstall <extension> [--project]")
-            console.print("[dim]Default: Uninstalls from global scope (~/.claude/commands/)[/dim]")
+            console.print("[bold yellow]Usage:[/bold yellow] orchestra disable <extension> [--project]")
+            console.print("[dim]Default: Disables from global scope (~/.claude/commands/)[/dim]")
             return
 
         extension = sys.argv[2]
         scope = "local" if "--project" in sys.argv else "global"
-        orchestra.uninstall(extension, scope)
+        orchestra.disable(extension, scope)
 
     elif command == "list":
         orchestra.list_extensions()
@@ -692,7 +798,7 @@ def main() -> None:
         elif global_script.exists():
             script_path = global_script
         else:
-            console.print("[bold red]❌ Task monitor not installed.[/bold red] Run: [cyan]orchestra install task[/cyan]")
+            console.print("[bold red]❌ Task monitor not enabled.[/bold red] Run: [cyan]orchestra enable task[/cyan]")
             return
 
         # Execute the task monitor script with the subcommand
@@ -703,6 +809,243 @@ def main() -> None:
             subprocess.run(args, check=False)
         except Exception as e:
             console.print(f"[bold red]❌ Error running task command:[/bold red] {e}")
+
+    elif command == "timemachine":
+        # Direct timemachine command execution
+        if len(sys.argv) < 3:
+            console.print("\n[bold yellow]Usage:[/bold yellow] orchestra timemachine <subcommand>\n")
+
+            console.print("[bold yellow]Subcommands:[/bold yellow]")
+            subcommands_table = Table(show_header=False, box=None, padding=(0, 2))
+            subcommands_table.add_column("Command", style="bold green")
+            subcommands_table.add_column("Description")
+
+            subcommands_table.add_row("list", "View conversation checkpoints")
+            subcommands_table.add_row("checkout <id>", "Checkout a specific checkpoint")
+            subcommands_table.add_row("view <id>", "View checkpoint details")
+            subcommands_table.add_row("rollback <n>", "Rollback n conversation turns")
+
+            console.print(subcommands_table)
+            console.print()
+            return
+
+        subcommand = sys.argv[2]
+
+        # Find the timemachine_monitor.py script
+        local_script = Path(".claude") / "orchestra" / "timemachine" / "timemachine_monitor.py"
+        global_script = Path.home() / ".claude" / "orchestra" / "timemachine" / "timemachine_monitor.py"
+
+        script_path = None
+        if local_script.exists():
+            script_path = local_script
+        elif global_script.exists():
+            script_path = global_script
+        else:
+            console.print("[bold red]❌ TimeMachine not enabled.[/bold red] Run: [cyan]orchestra enable timemachine[/cyan]")
+            return
+
+        # Execute the timemachine monitor script with the subcommand
+        import subprocess
+        try:
+            # Pass through any additional arguments
+            args = [sys.executable, str(script_path), subcommand] + sys.argv[3:]
+            subprocess.run(args, check=False)
+        except Exception as e:
+            console.print(f"[bold red]❌ Error running timemachine command:[/bold red] {e}")
+
+    elif command == "logs":
+        # View extension logs
+        import subprocess
+        
+        # Parse arguments
+        extension_filter = None
+        tail_mode = False
+        clear_logs = False
+        
+        for arg in sys.argv[2:]:
+            if arg == "--tail" or arg == "-f":
+                tail_mode = True
+            elif arg == "--clear":
+                clear_logs = True
+            elif arg == "--help" or arg == "-h":
+                console.print("\n[bold yellow]Usage:[/bold yellow] orchestra logs [extension] [--tail] [--clear]\n")
+                console.print("[bold yellow]Options:[/bold yellow]")
+                console.print("  [dim]extension[/dim]  Filter logs for specific extension (task, timemachine)")
+                console.print("  [dim]--tail[/dim]     Follow log output (like tail -f)")
+                console.print("  [dim]--clear[/dim]    Clear all Orchestra logs")
+                console.print("\n[bold yellow]Examples:[/bold yellow]")
+                console.print("  [dim]$[/dim] orchestra logs           # View all logs")
+                console.print("  [dim]$[/dim] orchestra logs task      # View task monitor logs")
+                console.print("  [dim]$[/dim] orchestra logs --tail    # Follow all logs")
+                console.print("  [dim]$[/dim] orchestra logs --clear   # Clear all logs\n")
+                return
+            elif not arg.startswith("-"):
+                extension_filter = arg
+        
+        # Find log files
+        log_patterns = []
+        if extension_filter:
+            if extension_filter == "task":
+                log_patterns.append("task_monitor.log")
+            elif extension_filter == "timemachine":
+                log_patterns.append("timemachine.log")
+            else:
+                console.print(f"[bold red]❌ Unknown extension:[/bold red] {extension_filter}")
+                console.print("[dim]Valid extensions: task, timemachine[/dim]")
+                return
+        else:
+            # Look for all Orchestra logs
+            log_patterns.extend(["task_monitor.log", "timemachine.log"])
+        
+        # Search for log files in common temp directories
+        import platform
+        
+        log_files = []
+        temp_roots = []
+        
+        if platform.system() == "Darwin":  # macOS
+            temp_roots.append("/var/folders")
+            temp_roots.append("/tmp")
+        elif platform.system() == "Linux":
+            temp_roots.append("/tmp")
+            temp_roots.append("/var/tmp")
+        elif platform.system() == "Windows":
+            temp_roots.append(os.environ.get("TEMP", ""))
+            temp_roots.append(os.environ.get("TMP", ""))
+        
+        # Find log files
+        for root in temp_roots:
+            if not root or not os.path.exists(root):
+                continue
+                
+            try:
+                # Use find command for efficiency
+                for pattern in log_patterns:
+                    if platform.system() == "Windows":
+                        # Windows find command is different
+                        cmd = ["where", "/r", root, pattern]
+                    else:
+                        # Unix-like find command
+                        cmd = ["find", root, "-name", pattern, "-type", "f"]
+                    
+                    result = subprocess.run(cmd, capture_output=True, text=True, stderr=subprocess.DEVNULL)
+                    if result.returncode == 0 and result.stdout:
+                        files = result.stdout.strip().split('\n')
+                        log_files.extend([f for f in files if f and os.path.exists(f)])
+            except Exception:
+                # Fallback to manual search if find fails
+                try:
+                    for dirpath, _, filenames in os.walk(root):
+                        if "claude" in dirpath.lower():
+                            for pattern in log_patterns:
+                                for filename in filenames:
+                                    if filename == pattern:
+                                        log_files.append(os.path.join(dirpath, filename))
+                except Exception:
+                    pass
+        
+        # Remove duplicates
+        log_files = list(set(log_files))
+        
+        if clear_logs:
+            # Clear logs
+            if not log_files:
+                console.print("[yellow]No Orchestra logs found to clear.[/yellow]")
+                return
+                
+            console.print(f"[bold yellow]Found {len(log_files)} log file(s):[/bold yellow]")
+            for log_file in log_files:
+                console.print(f"  [dim]-[/dim] {log_file}")
+            
+            # Confirm
+            console.print("\n[bold red]⚠️  This will delete all Orchestra logs.[/bold red]")
+            response = console.input("Continue? [y/N]: ")
+            
+            if response.lower() == 'y':
+                cleared = 0
+                for log_file in log_files:
+                    try:
+                        os.unlink(log_file)
+                        cleared += 1
+                    except Exception as e:
+                        console.print(f"[red]Failed to delete {log_file}: {e}[/red]")
+                
+                console.print(f"[bold green]✅ Cleared {cleared} log file(s)[/bold green]")
+            else:
+                console.print("[yellow]Cancelled.[/yellow]")
+            return
+        
+        if not log_files:
+            console.print("[yellow]No Orchestra logs found.[/yellow]")
+            console.print("[dim]Logs are created when extensions are used in Claude Code.[/dim]")
+            console.print("[dim]Try running a command first, e.g., 'orchestra task status'[/dim]")
+            return
+        
+        # Display or tail logs
+        if tail_mode:
+            console.print(f"[bold green]📜 Following {len(log_files)} log file(s):[/bold green]")
+            for log_file in log_files:
+                console.print(f"  [dim]-[/dim] {log_file}")
+            console.print("\n[dim]Press Ctrl+C to stop...[/dim]\n")
+            
+            # Use tail -f on the log files
+            try:
+                if platform.system() == "Windows":
+                    # Windows doesn't have tail, use PowerShell
+                    cmd = ["powershell", "-Command", f"Get-Content {' '.join(log_files)} -Wait"]
+                else:
+                    cmd = ["tail", "-f"] + log_files
+                
+                subprocess.run(cmd)
+            except KeyboardInterrupt:
+                console.print("\n[yellow]Stopped tailing logs.[/yellow]")
+        else:
+            # Display logs with nice formatting
+            console.print(f"[bold green]📜 Orchestra Logs[/bold green] ({len(log_files)} file(s) found)\n")
+            
+            for log_file in log_files:
+                # Extract extension name from log file
+                if "task_monitor.log" in log_file:
+                    ext_name = "Task Monitor"
+                    ext_color = "cyan"
+                elif "timemachine.log" in log_file:
+                    ext_name = "TimeMachine"
+                    ext_color = "magenta"
+                else:
+                    ext_name = "Unknown"
+                    ext_color = "white"
+                
+                console.print(f"[bold {ext_color}]═══ {ext_name} ═══[/bold {ext_color}]")
+                console.print(f"[dim]{log_file}[/dim]")
+                
+                try:
+                    with open(log_file, 'r') as f:
+                        # Read last 50 lines by default
+                        lines = f.readlines()
+                        if len(lines) > 50:
+                            console.print(f"[dim]... showing last 50 lines (file has {len(lines)} total) ...[/dim]")
+                            lines = lines[-50:]
+                        
+                        for line in lines:
+                            line = line.rstrip()
+                            # Color code log levels
+                            if "ERROR" in line or "CRITICAL" in line:
+                                console.print(f"[red]{line}[/red]")
+                            elif "WARNING" in line:
+                                console.print(f"[yellow]{line}[/yellow]")
+                            elif "DEBUG" in line:
+                                console.print(f"[dim]{line}[/dim]")
+                            elif "INFO" in line:
+                                console.print(f"[blue]{line}[/blue]")
+                            else:
+                                console.print(line)
+                        
+                except Exception as e:
+                    console.print(f"[red]Error reading log: {e}[/red]")
+                
+                console.print()  # Empty line between logs
+            
+            console.print("[dim]Tip: Use 'orchestra logs --tail' to follow logs in real-time[/dim]")
 
     else:
         console.print(f"[bold red]Unknown command:[/bold red] {command}")

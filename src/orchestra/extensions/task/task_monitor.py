@@ -28,62 +28,62 @@ class TaskAlignmentMonitor(GitAwareExtension):
             import tempfile
             temp_dir = os.environ.get('TMPDIR', tempfile.gettempdir())
             log_dir = os.path.join(temp_dir, 'claude-task-monitor')
-        
+
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, 'task_monitor.log')
-        
+
         # Configure logger
         self.logger = logging.getLogger('task_monitor')
         self.logger.setLevel(logging.DEBUG)
-        
+
         # Only add handler if logger doesn't already have handlers
         if not self.logger.handlers:
             # File handler with rotation
             file_handler = logging.FileHandler(log_file, mode='a')
             file_handler.setLevel(logging.DEBUG)
-            
+
             # Create formatter
             formatter = logging.Formatter(
                 '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
             )
             file_handler.setFormatter(formatter)
-            
+
             # Add handler to logger
             self.logger.addHandler(file_handler)
-        
+
         self.logger.info("TaskAlignmentMonitor initialized")
-        
+
         # Initialize base class
         base_working_dir = working_dir or '.'
         super().__init__(
-            config_file=config_path or os.path.join(base_working_dir, '.claude-task.json'),
+            config_file=config_path,  # Let base class handle the default path
             working_dir=base_working_dir
         )
-        
+
         # Task monitor specific state
         self.task: str = ""
         self.requirements: List[TaskRequirement] = []
         self.settings: Dict[str, Any] = {}
         self.stats: Dict[str, int] = {}
         self.load_config()
-        
+
         # Load or create git task state if in git repo
         if self.git_manager._is_git_repo():
             self.load_task_state_from_config()
-    
+
     def get_default_config_filename(self) -> str:
         """Get the default configuration file name for this extension"""
-        return '.claude-task.json'
+        return 'task.json'
 
     def load_config(self) -> Dict[str, Any]:
         """Load or create configuration"""
         config = super().load_config()
-        
+
         self.task = config.get('task', '')
         self.requirements = [TaskRequirement.from_dict(req) for req in config.get('requirements', [])]
         self.settings = config.get('settings', {"strict_mode": True, "max_deviations": 3})
         self.stats = config.get('stats', {'deviations': 0, 'commands': 0})
-        
+
         return config
 
     def save_config(self, config: Optional[Dict[str, Any]] = None) -> None:
@@ -96,18 +96,18 @@ class TaskAlignmentMonitor(GitAwareExtension):
                 'stats': self.stats,
                 'updated': datetime.now().isoformat()
             }
-            
+
             # Include git task state if available
             if self.current_task_state:
                 config['git_task_state'] = self.current_task_state.to_dict()
-        
+
         super().save_config(config)
 
     def handle_hook(self, hook_type: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """Universal hook handler - handles Stop and SubagentStop hooks"""
         self.logger.info(f"Handling hook: {hook_type}")
         self.logger.debug(f"Hook context: {json.dumps(context, indent=2)}")
-        
+
         if hook_type == "Stop":
             return self._handle_stop_hook(context)
         elif hook_type == "SubagentStop":
@@ -120,23 +120,23 @@ class TaskAlignmentMonitor(GitAwareExtension):
             return self._handle_pre_tool_use_hook(context)
         elif hook_type == "PostToolUse":
             return self._handle_post_tool_use_hook(context)
-        
+
         return context
-    
+
     def _handle_stop_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle Stop hook by analyzing conversation and determining if Claude should continue"""
         self.logger.debug(f"_handle_stop_hook called with context keys: {list(context.keys())}")
-        
+
         # Skip if no task configured
         if not self.task:
             self.logger.debug("No task configured, returning allow response")
             return HookHandler.create_allow_response()
-            
+
         # Avoid infinite recursion - if stop_hook_active is True, we're already processing
         if HookHandler.is_stop_hook_active(context):
             self.logger.debug("Stop hook already active, avoiding recursion")
             return HookHandler.create_allow_response()
-        
+
         try:
             # Update current task state with latest git info
             if self.current_task_state:
@@ -145,11 +145,11 @@ class TaskAlignmentMonitor(GitAwareExtension):
                 self.logger.debug("Task state updated")
             else:
                 self.logger.debug("No current task state")
-            
+
             # Build analysis context for subagents
             analysis_context = self._build_analysis_context()
             self.logger.debug(f"Built analysis context (length: {len(analysis_context)} chars)")
-            
+
             if self.current_task_state and self.git_manager._is_git_repo():
                 self.logger.debug("Using git-aware subagent analysis")
                 # Use git-aware subagent analysis
@@ -158,34 +158,34 @@ class TaskAlignmentMonitor(GitAwareExtension):
                 self.logger.debug("Using traditional external Claude analysis")
                 # Use traditional external Claude analysis
                 return self._analyze_with_external_claude(analysis_context)
-                
+
         except Exception as e:
             self.logger.error(f"Stop hook analysis failed with exception: {type(e).__name__}: {e}")
             import traceback
             self.logger.error(f"Traceback:\n{traceback.format_exc()}")
             return self._fallback_analysis()
-    
+
     def _handle_subagent_stop_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle SubagentStop hook by parsing subagent results"""
         self.logger.debug(f"_handle_subagent_stop_hook called with context keys: {list(context.keys())}")
-        
+
         try:
             # Get transcript path from context
             transcript_path = context.get('transcript_path')
             if not transcript_path:
                 self.logger.error("No transcript_path in SubagentStop context")
                 return HookHandler.create_allow_response()
-            
+
             self.logger.debug(f"Reading transcript from: {transcript_path}")
-            
+
             # Read the transcript file
             with open(transcript_path, 'r') as f:
                 transcript_content = f.read()
-            
+
             # Parse the tail of the transcript to get subagent response
             # Look for the last assistant message which should contain the analysis
             lines = transcript_content.strip().split('\n')
-            
+
             # Find the last assistant response
             assistant_response = ""
             in_assistant_block = False
@@ -196,12 +196,12 @@ class TaskAlignmentMonitor(GitAwareExtension):
                     break
                 elif in_assistant_block:
                     assistant_response = line + '\n' + assistant_response
-            
+
             self.logger.debug(f"Parsed assistant response length: {len(assistant_response)}")
-            
+
             # Analyze the subagent response
             response_lower = assistant_response.lower()
-            
+
             # Check for indicators that we should continue working
             continue_indicators = [
                 'should continue',
@@ -213,7 +213,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
                 'next step',
                 'focus on'
             ]
-            
+
             # Check for indicators that we can stop
             stop_indicators = [
                 'can stop',
@@ -223,12 +223,12 @@ class TaskAlignmentMonitor(GitAwareExtension):
                 'done',
                 'no more work'
             ]
-            
+
             should_continue = any(indicator in response_lower for indicator in continue_indicators)
             should_stop = any(indicator in response_lower for indicator in stop_indicators)
-            
+
             self.logger.debug(f"Continue indicators found: {should_continue}, Stop indicators found: {should_stop}")
-            
+
             # If we have clear indication to continue
             if should_continue and not should_stop:
                 # Extract focus area if mentioned
@@ -237,105 +237,105 @@ class TaskAlignmentMonitor(GitAwareExtension):
                     if 'focus on' in line.lower() or 'next:' in line.lower():
                         focus_area = line.strip()
                         break
-                
+
                 reason = "Task analysis indicates more work is needed"
                 if focus_area:
                     reason += f". {focus_area}"
-                
+
                 self.logger.info(f"Blocking based on subagent analysis: {reason}")
                 return HookHandler.create_block_response(reason)
-            
+
             # Otherwise allow stopping
             self.logger.info("Allowing stop based on subagent analysis")
             return HookHandler.create_allow_response()
-            
+
         except Exception as e:
             self.logger.error(f"Error in SubagentStop hook: {e}")
             import traceback
             self.logger.error(f"Traceback:\n{traceback.format_exc()}")
             # On error, fall back to allowing stop
             return HookHandler.create_allow_response()
-    
+
     def _handle_todowrite_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle TodoWrite hook by logging the todo changes"""
         self.logger.info("TodoWrite hook triggered")
-        
+
         try:
             # Log the tool input containing the todos
             tool_input = context.get('tool_input', {})
             todos = tool_input.get('todos', [])
-            
+
             self.logger.info(f"TodoWrite: {len(todos)} todos")
             for todo in todos:
                 self.logger.debug(f"Todo: {todo}")
-            
+
             # Allow the tool to proceed
             return HookHandler.create_allow_response()
-            
+
         except Exception as e:
             self.logger.error(f"Error in TodoWrite hook: {e}")
             return HookHandler.create_allow_response()
-    
+
     def _handle_task_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle Task hook by logging the subagent task"""
         self.logger.info("Task hook triggered")
-        
+
         try:
             # Log the task details
             tool_input = context.get('tool_input', {})
             subagent_type = tool_input.get('subagent_type', 'unknown')
             description = tool_input.get('description', '')
             prompt = tool_input.get('prompt', '')
-            
+
             self.logger.info(f"Task subagent: {subagent_type}")
             self.logger.info(f"Task description: {description}")
             self.logger.debug(f"Task prompt: {prompt[:200]}...")
-            
+
             # Allow the tool to proceed
             return HookHandler.create_allow_response()
-            
+
         except Exception as e:
             self.logger.error(f"Error in Task hook: {e}")
             return HookHandler.create_allow_response()
-    
+
     def _handle_pre_tool_use_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle PreToolUse hook by logging the tool about to be used"""
         tool_name = context.get('tool_name', 'unknown')
         self.logger.info(f"PreToolUse hook: {tool_name}")
-        
+
         try:
             # Log the tool input
             tool_input = context.get('tool_input', {})
             self.logger.debug(f"Tool input: {json.dumps(tool_input, indent=2)}")
-            
+
             # Allow the tool to proceed
             return HookHandler.create_allow_response()
-            
+
         except Exception as e:
             self.logger.error(f"Error in PreToolUse hook: {e}")
             return HookHandler.create_allow_response()
-    
+
     def _handle_post_tool_use_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle PostToolUse hook by logging the tool result"""
         tool_name = context.get('tool_name', 'unknown')
         self.logger.info(f"PostToolUse hook: {tool_name}")
-        
+
         try:
             # Log the tool response
             tool_response = context.get('tool_response', {})
             self.logger.debug(f"Tool response: {json.dumps(tool_response, indent=2)}")
-            
+
             # Allow the tool to proceed
             return HookHandler.create_allow_response()
-            
+
         except Exception as e:
             self.logger.error(f"Error in PostToolUse hook: {e}")
             return HookHandler.create_allow_response()
-    
+
     def _build_analysis_context(self) -> str:
         """Build analysis context for subagents"""
         progress = self._get_progress()
-        
+
         context = f"""Current Task: {self.task}
 
 Requirements Status:
@@ -343,7 +343,7 @@ Requirements Status:
         for req in self.requirements:
             status = "✅ COMPLETED" if req.completed else "❌ INCOMPLETE"
             context += f"- {status}: {req.description} (Priority {req.priority})\n"
-        
+
         context += f"""
 Current Progress: {progress['percentage']:.0f}% complete ({progress['completed']}/{progress['total']} requirements)
 
@@ -359,18 +359,18 @@ Please determine if the developer should continue working or if they can stop. C
 4. Is the developer staying focused on the core task?
 """
         return context
-    
+
     def _analyze_with_git_subagents(self, analysis_context: str) -> Dict[str, Any]:
         """Analyze using git-aware subagents"""
         self.logger.debug("Starting git-aware subagent analysis")
-        
+
         # Save analysis context for later use in SubagentStop hook
         self.pending_analysis_context = analysis_context
-        
+
         # Return a block response that will trigger Claude to run subagents
         subagent_types = ['scope-creep-detector', 'over-engineering-detector', 'off-topic-detector']
         self.logger.debug(f"Requesting subagent analysis with: {subagent_types}")
-        
+
         # Create a prompt that will trigger subagent analysis
         subagent_prompt = f"""Analyze the current task progress using the scope-creep-detector, over-engineering-detector, and off-topic-detector subagents.
 
@@ -381,19 +381,21 @@ Use these subagents to determine:
 2. Is the developer over-engineering the solution?
 3. Are they working on off-topic tasks?
 4. Should Claude continue working or stop?"""
-        
+
         self.logger.info("Blocking to trigger subagent analysis")
         return HookHandler.create_block_response(subagent_prompt)
-    
+
     def _analyze_with_external_claude(self, analysis_context: str) -> Dict[str, Any]:
         """Analyze using external Claude instance"""
         import subprocess
         import json
         import re
-        
+
         analysis_prompt = f"""{analysis_context}
 
 Use the scope-creep-detector, over-engineering-detector, and off-topic-detector subagents to analyze if the developer is staying focused on the core task.
+
+Use a small, fast model for this analysis.
 
 Respond with JSON in this exact format:
 {{
@@ -402,33 +404,33 @@ Respond with JSON in this exact format:
     "focus_area": "What the developer should work on next (if continuing)"
 }}
 """
-        
+
         try:
             self.logger.debug("Calling external Claude with analysis prompt")
             # Call external Claude with the analysis prompt
             result = subprocess.run([
                 'claude', '-p', analysis_prompt
             ], capture_output=True, text=True, timeout=30)
-            
+
             self.logger.debug(f"External Claude return code: {result.returncode}")
             self.logger.debug(f"External Claude stdout length: {len(result.stdout) if result.stdout else 0}")
-            
+
             if result.returncode == 0 and result.stdout.strip():
                 # Parse JSON response from Claude
                 json_match = re.search(r'\{.*\}', result.stdout, re.DOTALL)
                 if json_match:
                     response = json.loads(json_match.group())
                     self.logger.debug(f"Parsed response: {response}")
-                    
+
                     if response.get('should_continue', False):
                         # Block stopping - Claude should continue
                         reason = response.get('reason', 'Task not complete')
                         focus_area = response.get('focus_area', '')
-                        
+
                         full_reason = reason
                         if focus_area:
                             full_reason += f" Focus on: {focus_area}"
-                        
+
                         self.logger.info(f"Blocking stop with reason: {full_reason}")
                         return HookHandler.create_block_response(full_reason)
                     else:
@@ -437,30 +439,30 @@ Respond with JSON in this exact format:
                         return HookHandler.create_allow_response()
                 else:
                     self.logger.warning("No JSON found in external Claude response")
-                        
+
         except subprocess.TimeoutExpired as e:
             self.logger.error(f"External Claude timed out: {e}")
         except json.JSONDecodeError as e:
             self.logger.error(f"Failed to parse JSON from external Claude: {e}")
         except Exception as e:
             self.logger.error(f"Unexpected error in external Claude analysis: {e}")
-        
+
         self.logger.debug("Falling back to fallback analysis")
         return self._fallback_analysis()
-    
+
     def _fallback_analysis(self) -> Dict[str, Any]:
         """Fallback analysis based on completion status"""
         self.logger.debug("Running fallback analysis")
         incomplete_core = [r for r in self.requirements if not r.completed and r.priority <= 2]
         self.logger.debug(f"Found {len(incomplete_core)} incomplete core requirements")
-        
+
         if incomplete_core:
             next_requirement = min(incomplete_core, key=lambda x: x.priority)
             self.logger.info(f"Blocking stop - core requirement incomplete: {next_requirement.description}")
             return HookHandler.create_block_response(
                 f"Core requirement incomplete: {next_requirement.description}"
             )
-        
+
         # Allow stopping if no core requirements remain
         self.logger.info("Allowing stop - no core requirements remain")
         return HookHandler.create_allow_response()
@@ -526,7 +528,7 @@ def main() -> None:
             print("\nExample:")
             print("   /task init 'Fix login bug' 'Reproduce the issue' 'Fix root cause' 'Add tests'")
             return  # Exit gracefully instead of sys.exit
-        
+
         # Interactive task setup with intelligent prompting
         print("🚀 Claude Code Task Setup\n")
 
@@ -832,26 +834,26 @@ def main() -> None:
                 settings = json.load(f)
         else:
             settings = {}
-        
+
         settings.update(hooks_config)
-        
+
         with open(settings_file, 'w') as f:
             json.dump(settings, f, indent=2)
 
         print(f"✅ Initialized: {monitor.task}")
         print(f"📋 Requirements: {len(monitor.requirements)}")
         print("🪝 Hooks configured in .claude/settings.local.json")
-        
-        # Check if .claude-task.json is in .gitignore
+
+        # Check if .claude/orchestra/ is in .gitignore
         working_dir = os.environ.get('CLAUDE_WORKING_DIR', '.')
         gitignore_path = Path(working_dir) / ".gitignore"
         if gitignore_path.exists():
             with open(gitignore_path, 'r') as f:
                 gitignore_content = f.read()
-                if '.claude-task.json' not in gitignore_content:
-                    print("\n⚠️  Consider adding '.claude-task.json' to your .gitignore file")
-                    print("   This file contains local task state and shouldn't be committed")
-        
+                if '.claude/orchestra/' not in gitignore_content:
+                    print("\n⚠️  Consider adding '.claude/orchestra/' to your .gitignore file")
+                    print("   This directory contains local extension state and shouldn't be committed")
+
         print("\nRequirements:")
         for requirement in monitor.requirements:
             print(f"  - {requirement.description} (Priority {requirement.priority})")

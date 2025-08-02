@@ -10,11 +10,11 @@ git clone git@github.com:coopermaruyama/orchestra.git
 cd orchestra
 pip install --user .
 
-# Install task-monitor extension (globally by default)
-orchestra install task-monitor
+# Enable task-monitor extension (globally by default)
+orchestra enable task-monitor
 
-# Or install to current project only
-orchestra install task-monitor --project
+# Or enable to current project only
+orchestra enable task-monitor --project
 
 # Use it in Claude Code
 /task start
@@ -25,20 +25,20 @@ orchestra install task-monitor --project
 
 ## What is Orchestra?
 
-Orchestra is a lightweight extension manager for Claude Code that helps you stay focused and productive. Extensions are installed to `~/.claude/commands/` (global by default) or `.claude/commands/` (project-specific with `--project` flag).
+Orchestra is a lightweight extension manager for Claude Code that helps you stay focused and productive. Extensions are enabled in `~/.claude/commands/` (global by default) or `.claude/commands/` (project-specific with `--project` flag).
 
-> **⚠️ Important**: Claude Code does not support conflicts between user and project level commands. We recommend using global installation (default) unless you specifically need project-specific commands.
+> **⚠️ Important**: Claude Code does not support conflicts between user and project level commands. We recommend using global enablement (default) unless you specifically need project-specific commands.
 
 ## Available Extensions
 
-### task-monitor
+### task
 Keep Claude focused on your task requirements. No scope creep, no over-engineering.
 
 **Commands:**
-- `/task start` - Interactive task setup with intelligent questions
-- `/task status` - Check your progress
-- `/task next` - See what to work on next
-- `/task complete` - Mark current item done
+- `/task:start` - Interactive task setup with intelligent questions
+- `/task:status` - Check your progress
+- `/task:next` - See what to work on next
+- `/task:complete` - Mark current item done
 - `/focus` - Quick focus reminder
 
 **Features:**
@@ -46,6 +46,23 @@ Keep Claude focused on your task requirements. No scope creep, no over-engineeri
 - Warns about scope creep
 - Tracks progress automatically
 - Guides you through requirements
+- Git integration for task isolation
+
+### timemachine
+Automatic git checkpointing for every conversation turn. Travel back in time to any previous state.
+
+**Commands:**
+- `/timemachine:list` - View conversation checkpoints
+- `/timemachine:checkout` - Checkout a specific checkpoint
+- `/timemachine:view` - View full checkpoint details
+- `/timemachine:rollback` - Go back n conversation turns
+
+**Features:**
+- Checkpoint every user prompt automatically
+- Store full conversation metadata
+- Track tools used and files modified
+- Easy rollback to any previous state
+- Works alongside task monitor
 
 ## Installation
 
@@ -67,6 +84,9 @@ pip install --user .
 
 # Or install with pipx (manages virtual environment automatically)
 pipx install .
+
+# with uv
+uv tool install dist/orchestra-0.5.0-py3-none-any.whl
 ```
 
 **Option 2: Development installation**
@@ -92,23 +112,46 @@ which orchestra
 orchestra --help
 ```
 
-### Install Extensions
+### Enable Extensions
 
 ```bash
-# Global install (all projects) - DEFAULT
-orchestra install task-monitor
+# Enable task monitor (recommended)
+orchestra enable task
 
-# Project-specific install (current project only)
-orchestra install task-monitor --project
+# Enable timemachine (optional)
+orchestra enable timemachine
 
-# List installed extensions
+# Project-specific enablement (current project only)
+orchestra enable task --project
+
+# List enabled extensions
 orchestra list
 
-# Uninstall from global scope (default)
-orchestra uninstall task-monitor
+# View logs
+orchestra logs              # View all logs
+orchestra logs task         # View task monitor logs only
+orchestra logs --tail       # Follow logs in real-time
+orchestra logs --clear      # Clear all logs
 
-# Uninstall from project scope
-orchestra uninstall task-monitor --project
+# Disable extensions
+orchestra disable task
+orchestra disable timemachine
+```
+
+### Quick Usage
+
+**In Claude Code:**
+```
+/task:start        # Start a new task
+/focus             # Quick focus reminder
+/timemachine:list  # View checkpoints
+```
+
+**From CLI:**
+```bash
+orchestra task start
+orchestra task status
+orchestra timemachine list
 ```
 
 ## Direct Command Usage
@@ -134,7 +177,7 @@ You can run task commands directly from the command line without entering Claude
 
 ## Team Collaboration
 
-When you install Orchestra extensions in a project, team members can use the commands immediately:
+When you enable Orchestra extensions in a project, team members can use the commands immediately:
 
 1. **With Orchestra installed**: Commands work directly through the `orchestra` CLI
 2. **Without Orchestra**: The bootstrap script shows one-time installation instructions
@@ -178,41 +221,58 @@ Ideas for future Orchestra extensions:
 
 ## Development & Testing
 
+### Setup Development Environment
+
+```bash
+# Development setup
+uv sync --extra dev
+```
+
 ### Run Tests
 
 ```bash
-# Activate virtual environment if not already active
-source venv/bin/activate
-
 # Run all tests
-pytest
+uv run pytest
 
 # Run tests with coverage
-pytest --cov=src --cov-report=term-missing
+uv run pytest --cov=orchestra --cov-report=term-missing
 
 # Run specific test types
-pytest -m unit          # Unit tests only
-pytest -m integration   # Integration tests only
-pytest -m deviation_detection  # Deviation detection tests
+uv run pytest -m unit          # Unit tests only
+uv run pytest -m integration   # Integration tests only
+uv run pytest -m deviation_detection  # Deviation detection tests
 
 # Run tests verbosely
-pytest -v
+uv run pytest -v
 ```
+
+### Testing Documentation
+
+- **[Testing Guide](docs/testing-guide.md)** - Comprehensive testing instructions
+- **[Quick Test Reference](docs/quick-test-reference.md)** - Quick commands for testing
+- **[Testing Scenarios](docs/testing.md)** - Detailed test scenarios
 
 ### Code Quality
 
 ```bash
 # Format code
-black .
+uv run black .
 
 # Lint code
-ruff check .
+uv run ruff check .
 
 # Type checking
-mypy src/
+uv run mypy src/
 
 # Run all quality checks
-black . && ruff check . && mypy src/
+uv run black . && uv run ruff check . && uv run mypy src/
+
+
+## Build
+```bash
+# Build the package
+uv  build
+
 ```
 
 ### Manual Testing
@@ -221,7 +281,7 @@ black . && ruff check . && mypy src/
 # Test Orchestra CLI directly
 orchestra --help
 orchestra list
-orchestra install task-monitor
+orchestra enable task-monitor
 
 # Test task monitor commands
 orchestra task start
