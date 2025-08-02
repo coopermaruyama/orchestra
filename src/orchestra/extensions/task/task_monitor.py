@@ -19,11 +19,16 @@ from orchestra.common import GitAwareExtension, TaskRequirement, HookHandler
 
 class TaskAlignmentMonitor(GitAwareExtension):
     def __init__(self, config_path: Optional[str] = None) -> None:
-        # Use CLAUDE_WORKING_DIR if available, otherwise current directory
-        working_dir = os.environ.get('CLAUDE_WORKING_DIR', '.')
+        # Use CLAUDE_WORKING_DIR if available, otherwise use TMPDIR
+        working_dir = os.environ.get('CLAUDE_WORKING_DIR')
+        if working_dir:
+            log_dir = os.path.join(working_dir, '.claude', 'logs')
+        else:
+            # Fallback to system temp directory
+            import tempfile
+            temp_dir = os.environ.get('TMPDIR', tempfile.gettempdir())
+            log_dir = os.path.join(temp_dir, 'claude-task-monitor')
         
-        # Set up logging
-        log_dir = os.path.join(working_dir, '.claude', 'logs')
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, 'task_monitor.log')
         
@@ -49,9 +54,10 @@ class TaskAlignmentMonitor(GitAwareExtension):
         self.logger.info("TaskAlignmentMonitor initialized")
         
         # Initialize base class
+        base_working_dir = working_dir or '.'
         super().__init__(
-            config_file=config_path or os.path.join(working_dir, '.claude-task.json'),
-            working_dir=working_dir
+            config_file=config_path or os.path.join(base_working_dir, '.claude-task.json'),
+            working_dir=base_working_dir
         )
         
         # Task monitor specific state
