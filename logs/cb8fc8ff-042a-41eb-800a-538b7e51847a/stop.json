@@ -1,0 +1,9 @@
+[
+  {
+    "session_id": "cb8fc8ff-042a-41eb-800a-538b7e51847a",
+    "transcript_path": "/Users/coopermaruyama/.claude/projects/-Users-coopermaruyama-Developer-orchestra/cb8fc8ff-042a-41eb-800a-538b7e51847a.jsonl",
+    "cwd": "/Users/coopermaruyama/Developer/orchestra",
+    "hook_event_name": "Stop",
+    "stop_hook_active": false
+  }
+]

@@ -5,3 +5,6 @@ build
 .pytest_cache
 .claude-task.json
 __pycache__
+.venv
+logs
+test_project

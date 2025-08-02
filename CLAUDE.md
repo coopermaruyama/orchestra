@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Since this is an extension for Claude Code, important documentation references are included at:
 
-@docs/configuration-reference.md
-@docs/slash-commands-reference.md
-@docs/hooks-reference.md
+@docs/claude-docs/configuration-reference.md
+@docs/claude-docs/slash-commands-reference.md
+@docs/claude-docs/hooks-reference.md
+@docs/claude-docs/subagents-reference.md
 
 ## Project Overview
 
@@ -102,10 +103,10 @@ class DeviationType(Enum):
 ## Task Monitor Usage
 
 ### Slash Commands
-- `/task start` - Interactive task setup with type-specific questions
-- `/task status` - Show current progress and requirements
-- `/task next` - Display next priority action
-- `/task complete` - Mark current requirement as complete
+- `/task:start` - Interactive task setup with type-specific questions
+- `/task:status` - Show current progress and requirements
+- `/task:next` - Display next priority action
+- `/task:complete` - Mark current requirement as complete
 - `/focus` - Quick focus reminder
 
 ### Hook Behaviors

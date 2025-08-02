@@ -12,22 +12,44 @@ from typing import Dict, Any
 from rich.console import Console
 from rich.table import Table
 
+def get_version() -> str:
+    """Get version from pyproject.toml"""
+    try:
+        # Try to find pyproject.toml
+        current_file = Path(__file__).resolve()
+        # Look for pyproject.toml in parent directories
+        for parent in current_file.parents:
+            pyproject_path = parent / "pyproject.toml"
+            if pyproject_path.exists():
+                with open(pyproject_path, 'r') as f:
+                    content = f.read()
+                    # Simple parsing for version
+                    for line in content.split('\n'):
+                        if line.strip().startswith('version ='):
+                            version = line.split('=')[1].strip().strip('"').strip("'")
+                            return version
+                break
+    except Exception:
+        pass
+    return "0.5.0"  # Fallback to current version
+
 class Orchestra:
     def __init__(self) -> None:
+        self.__version__ = get_version()
         self.home = Path.home()
         self.global_dir = self.home / ".claude" / "commands"
         self.local_dir = Path(".claude") / "commands"
         self.console = Console()
-        
+
         # Available extensions registry
         self.extensions = {
-            "task-monitor": {
+            "task": {
                 "name": "Task Monitor",
                 "description": "Keep Claude focused on your task requirements. Prevents scope creep, tracks progress, and guides you through requirements step by step.",
                 "commands": ["task start", "task progress", "task next", "task complete", "focus"],
                 "features": [
                     "Blocks off-topic commands",
-                    "Warns about scope creep", 
+                    "Warns about scope creep",
                     "Tracks progress automatically",
                     "Guides through requirements"
                 ]
@@ -50,7 +72,7 @@ class Orchestra:
         else:
             commands_dir = self.local_dir
             scripts_dir = Path(".claude") / "orchestra" / extension
-            
+
             # Warning for project scope installation
             self.console.print("\n[bold yellow]⚠️  Warning: Project scope installation[/bold yellow]")
             self.console.print("[yellow]Installing to project scope (.claude/commands/) may conflict with global installations.[/yellow]")
@@ -93,7 +115,7 @@ show_install_instructions() {
     if [ -f "$FLAG_FILE" ]; then
         return
     fi
-    
+
     echo "============================================================"
     echo "🎼 Orchestra not installed"
     echo "============================================================"
@@ -106,12 +128,12 @@ show_install_instructions() {
     echo "Or install from the project:"
     echo "  pip install -e ."
     echo ""
-    echo "Then install the task-monitor extension:"
-    echo "  orchestra install task-monitor"
+    echo "Then install the task extension:"
+    echo "  orchestra install task"
     echo ""
     echo "For more info: https://github.com/anthropics/orchestra"
     echo "============================================================"
-    
+
     mkdir -p "$(dirname "$FLAG_FILE")"
     touch "$FLAG_FILE"
 }
@@ -129,12 +151,12 @@ if [ "$1" = "hook" ]; then
         echo "Error: Python not found in PATH" >&2
         exit 127
     fi
-    
+
     # Find the task_monitor.py script
     SCRIPT_DIR="$(dirname "$0")"
-    LOCAL_SCRIPT="$SCRIPT_DIR/task-monitor/task_monitor.py"
-    GLOBAL_SCRIPT="$HOME/.claude/orchestra/task-monitor/task_monitor.py"
-    
+    LOCAL_SCRIPT="$SCRIPT_DIR/task/task_monitor.py"
+    GLOBAL_SCRIPT="$HOME/.claude/orchestra/task/task_monitor.py"
+
     if [ -f "$LOCAL_SCRIPT" ]; then
         TASK_MONITOR="$LOCAL_SCRIPT"
     elif [ -f "$GLOBAL_SCRIPT" ]; then
@@ -143,7 +165,7 @@ if [ "$1" = "hook" ]; then
         echo "Error: task_monitor.py not found" >&2
         exit 1
     fi
-    
+
     # Execute the hook
     exec "$PYTHON" "$TASK_MONITOR" "$@"
 fi
@@ -159,19 +181,48 @@ exec orchestra "$@"
 '''
         with open(bootstrap_dest, 'w') as f:
             f.write(bootstrap_content)
-        
+
         bootstrap_dest.chmod(0o755)
 
-        # Copy the task_monitor.py script
-        if extension == "task-monitor":
-            task_monitor_source = Path(__file__).parent / "extensions" / "task-monitor" / "task_monitor.py"
+        # Copy the task_monitor.py script and its dependencies
+        if extension == "task":
+            task_monitor_source = Path(__file__).parent / "extensions" / "task" / "task_monitor.py"
             task_monitor_dest = scripts_dir / "task_monitor.py"
             
+            # Copy main script
             if task_monitor_source.exists():
                 shutil.copy(task_monitor_source, task_monitor_dest)
                 task_monitor_dest.chmod(0o755)
             else:
                 self.console.print(f"[bold red]⚠️ Warning:[/bold red] task_monitor.py not found at {task_monitor_source}")
+                return
+            
+            # Copy orchestra.common library for dependencies
+            common_source = Path(__file__).parent / "common"
+            orchestra_dest = scripts_dir / "orchestra"
+            common_dest = orchestra_dest / "common"
+            
+            if common_source.exists():
+                # Create orchestra package directory
+                orchestra_dest.mkdir(exist_ok=True)
+                
+                # Create orchestra/__init__.py
+                (orchestra_dest / "__init__.py").write_text('"""Orchestra package"""')
+                
+                # Copy common directory
+                if common_dest.exists():
+                    shutil.rmtree(common_dest)
+                shutil.copytree(common_source, common_dest)
+                
+                # Make git-wip executable
+                git_wip_path = common_dest / "git-wip"
+                if git_wip_path.exists():
+                    git_wip_path.chmod(0o755)
+                    self.console.print(f"[dim]🔧 Made git-wip executable[/dim]")
+                
+                self.console.print(f"[dim]📦 Bundled orchestra.common library[/dim]")
+            else:
+                self.console.print(f"[bold red]⚠️ Warning:[/bold red] orchestra.common not found at {common_source}")
 
         # Install subagents for intelligent deviation detection
         self._install_subagents(extension, scope)
@@ -214,7 +265,7 @@ description: {cmd_info['description']}
 
 {cmd_info['script']}
 
-<!-- AUTO-GENERATED BY ORCHESTRA: task-monitor -->"""
+<!-- AUTO-GENERATED BY ORCHESTRA: task -->"""
 
             with open(task_dir / f"{cmd_name}.md", 'w') as f:
                 f.write(cmd_content)
@@ -227,7 +278,7 @@ description: Quick reminder of what you should be working on right now
 
 !sh {bootstrap_path} task focus
 
-<!-- AUTO-GENERATED BY ORCHESTRA: task-monitor -->"""
+<!-- AUTO-GENERATED BY ORCHESTRA: task -->"""
 
         with open(commands_dir / "focus.md", 'w') as f:
             f.write(focus_content)
@@ -248,7 +299,7 @@ description: Quick reminder of what you should be working on right now
                 ],
                 "PostToolUse": [
                     {
-                        "matcher": "*", 
+                        "matcher": "*",
                         "hooks": [
                             {
                                 "type": "command",
@@ -266,6 +317,48 @@ description: Quick reminder of what you should be working on right now
                             }
                         ]
                     }
+                ],
+                "TodoWrite": [
+                    {
+                        "matcher": "*",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f"sh {bootstrap_path} hook TodoWrite"
+                            }
+                        ]
+                    }
+                ],
+                "Task": [
+                    {
+                        "matcher": "*",
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f"sh {bootstrap_path} hook Task"
+                            }
+                        ]
+                    }
+                ],
+                "Stop": [
+                    {
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f"sh {bootstrap_path} hook Stop"
+                            }
+                        ]
+                    }
+                ],
+                "SubagentStop": [
+                    {
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f"sh {bootstrap_path} hook SubagentStop"
+                            }
+                        ]
+                    }
                 ]
             }
         }
@@ -279,7 +372,7 @@ description: Quick reminder of what you should be working on right now
             existing_settings = {
                 "$schema": "https://json.schemastore.org/claude-code-settings.json"
             }
-        
+
         # Merge hooks configuration
         if "hooks" in existing_settings:
             # Update existing hooks
@@ -291,7 +384,7 @@ description: Quick reminder of what you should be working on right now
         with open(settings_file, 'w') as f:
             json.dump(existing_settings, f, indent=2)
 
-        self.console.print(f"[bold green]✅ Installed task-monitor[/bold green] ({scope} scope)")
+        self.console.print(f"[bold green]✅ Installed task[/bold green] ({scope} scope)")
         self.console.print(f"[bold]📁 Commands:[/bold]")
         self.console.print(f"   [dim]-[/dim] {task_dir}/*.md (sub-commands)")
         self.console.print(f"   [dim]-[/dim] {commands_dir / 'focus.md'}")
@@ -302,26 +395,26 @@ description: Quick reminder of what you should be working on right now
 
     def _install_subagents(self, extension: str, scope: str) -> None:
         """Install subagents for an extension"""
-        if extension != "task-monitor":
-            return  # Only task-monitor currently uses subagents
-            
+        if extension != "task":
+            return  # Only task currently uses subagents
+
         # Determine agents directory
         if scope == "global":
             agents_dir = self.home / ".claude" / "agents"
         else:
             agents_dir = Path(".claude") / "agents"
-            
+
         agents_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Copy subagent templates
-        source_agents_dir = Path(__file__).parent / "extensions" / "task-monitor" / "agents"
+        source_agents_dir = Path(__file__).parent / "extensions" / "task" / "agents"
         if source_agents_dir.exists():
             agent_count = 0
             for agent_file in source_agents_dir.glob("*.md"):
                 dest_file = agents_dir / agent_file.name
                 shutil.copy(agent_file, dest_file)
                 agent_count += 1
-                
+
             if agent_count > 0:
                 self.console.print(f"[bold green]🤖 Installed {agent_count} subagents[/bold green] for intelligent deviation detection")
 
@@ -350,9 +443,9 @@ description: Quick reminder of what you should be working on right now
         self.console.print("[bold yellow]Available to install:[/bold yellow]")
         for ext_id, ext_info in self.extensions.items():
             # Check if already installed
-            local_installed = (self.local_dir / "task" if ext_id == "task-monitor" else self.local_dir / ext_id).exists()
-            global_installed = (self.global_dir / "task" if ext_id == "task-monitor" else self.global_dir / ext_id).exists()
-            
+            local_installed = (self.local_dir / "task" if ext_id == "task" else self.local_dir / ext_id).exists()
+            global_installed = (self.global_dir / "task" if ext_id == "task" else self.global_dir / ext_id).exists()
+
             if not local_installed and not global_installed:
                 self.console.print(f"  [dim]•[/dim] {ext_id} : [italic]{ext_info['description'][:60]}...[/italic]")
 
@@ -374,7 +467,7 @@ description: Quick reminder of what you should be working on right now
             """Check if a file has the Orchestra auto-generated comment"""
             if not file_path.exists():
                 return False
-            
+
             try:
                 with open(file_path, 'r') as f:
                     content = f.read().strip()
@@ -384,7 +477,7 @@ description: Quick reminder of what you should be working on right now
                 return False
 
         # Remove command files if they were generated by Orchestra
-        if extension == "task-monitor":
+        if extension == "task":
             # Remove task sub-commands
             task_dir = commands_dir / "task"
             if task_dir.exists() and task_dir.is_dir():
@@ -394,11 +487,11 @@ description: Quick reminder of what you should be working on right now
                         cmd_file.unlink()
                         removed_count += 1
                         removed = True
-                
+
                 # Remove the task directory if it's empty
                 if removed_count > 0 and not any(task_dir.iterdir()):
                     task_dir.rmdir()
-                
+
             # Remove focus.md if it was generated by Orchestra
             focus_file = commands_dir / "focus.md"
             if is_orchestra_generated(focus_file, extension):
@@ -406,7 +499,7 @@ description: Quick reminder of what you should be working on right now
                 removed = True
 
         # Remove subagents if they were generated by Orchestra
-        if agents_dir.exists() and extension == "task-monitor":
+        if agents_dir.exists() and extension == "task":
             agent_files = ["off-topic-detector.md", "over-engineering-detector.md", "scope-creep-detector.md"]
             for agent_file in agent_files:
                 agent_path = agents_dir / agent_file
@@ -431,9 +524,9 @@ description: Quick reminder of what you should be working on right now
         if bootstrap_path.exists():
             # Check if any other extension directories exist
             orchestra_dir = scripts_dir.parent
-            other_extensions = [d for d in orchestra_dir.iterdir() 
+            other_extensions = [d for d in orchestra_dir.iterdir()
                               if d.is_dir() and d.name != extension and d.name != "bootstrap.sh"]
-            
+
             if not other_extensions:
                 bootstrap_path.unlink()
                 # Remove orchestra directory if empty
@@ -442,37 +535,37 @@ description: Quick reminder of what you should be working on right now
 
         # Clean up hooks from settings.json
         settings_file = commands_dir.parent / "settings.json"
-        if settings_file.exists() and extension == "task-monitor":
+        if settings_file.exists() and extension == "task":
             try:
                 with open(settings_file, 'r') as f:
                     settings = json.load(f)
-                
+
                 if "hooks" in settings:
-                    # Remove task-monitor specific hooks
+                    # Remove task specific hooks
                     bootstrap_command = f"sh {bootstrap_path} hook"
-                    
-                    for event_name in ["PreToolUse", "PostToolUse", "UserPromptSubmit"]:
+
+                    for event_name in ["PreToolUse", "PostToolUse", "UserPromptSubmit", "Stop", "SubagentStop"]:
                         if event_name in settings["hooks"]:
                             # Filter out Orchestra hooks
                             if isinstance(settings["hooks"][event_name], list):
                                 settings["hooks"][event_name] = [
                                     hook for hook in settings["hooks"][event_name]
-                                    if not (isinstance(hook, dict) and 
+                                    if not (isinstance(hook, dict) and
                                            hook.get("hooks", [{}])[0].get("command", "").startswith(bootstrap_command))
                                 ]
-                                
+
                                 # Remove empty hook arrays
                                 if not settings["hooks"][event_name]:
                                     del settings["hooks"][event_name]
-                    
+
                     # Remove hooks key if empty
                     if not settings["hooks"]:
                         del settings["hooks"]
-                
+
                 # Write back the cleaned settings
                 with open(settings_file, 'w') as f:
                     json.dump(settings, f, indent=2)
-                    
+
             except Exception as e:
                 self.console.print(f"[yellow]⚠️ Warning: Could not clean up hooks from settings.json: {e}[/yellow]")
 
@@ -483,65 +576,67 @@ description: Quick reminder of what you should be working on right now
 
 def main() -> None:
     console = Console()
-    
+
     if len(sys.argv) < 2:
         # Title
         console.print("\n[bold blue]🎼 Orchestra[/bold blue] - [italic]Claude Code Extension Manager[/italic]\n")
-        
+
         # Usage
         console.print("[bold yellow]Usage:[/bold yellow] orchestra <command> [options]\n")
-        
+
         # Commands table
         commands_table = Table(show_header=False, box=None, padding=(0, 2))
         commands_table.add_column("Command", style="bold cyan")
         commands_table.add_column("Description")
-        
+
         console.print("[bold yellow]Commands:[/bold yellow]")
         commands_table.add_row("install <extension> [--project]", "Install an extension (default: global)")
         commands_table.add_row("uninstall <extension> [--project]", "Uninstall an extension (default: global)")
         commands_table.add_row("list", "List installed extensions")
         commands_table.add_row("task <subcommand>", "Run task monitor commands")
         console.print(commands_table)
-        
+
         # Task subcommands
         console.print("\n[bold yellow]Task Monitor Commands:[/bold yellow]")
         task_table = Table(show_header=False, box=None, padding=(0, 2))
         task_table.add_column("Subcommand", style="bold green")
         task_table.add_column("Description")
-        
+
         task_table.add_row("start", "Interactive task setup")
         task_table.add_row("status", "Check current progress")
         task_table.add_row("next", "Show next priority action")
         task_table.add_row("complete", "Mark current requirement done")
         task_table.add_row("focus", "Quick focus reminder")
         console.print(task_table)
-        
+
         # Available Extensions
         console.print("\n[bold yellow]Available Extensions:[/bold yellow]")
         extensions_table = Table(show_header=False, box=None, padding=(0, 2))
         extensions_table.add_column("Extension", style="bold magenta")
         extensions_table.add_column("Description")
-        
+
         # Get extensions from Orchestra instance
         temp_orchestra = Orchestra()
         for ext_id, ext_info in temp_orchestra.extensions.items():
             extensions_table.add_row(
-                ext_id, 
+                ext_id,
                 str(ext_info['description'])
             )
         console.print(extensions_table)
-        
+
         # Examples
         console.print("\n[bold yellow]Examples:[/bold yellow]")
-        console.print("  [dim]$[/dim] orchestra install task-monitor")
-        console.print("  [dim]$[/dim] orchestra install task-monitor --project")
+        console.print("  [dim]$[/dim] orchestra install task")
+        console.print("  [dim]$[/dim] orchestra install task --project")
         console.print("  [dim]$[/dim] orchestra task start")
         console.print("  [dim]$[/dim] orchestra task status\n")
         return
 
     orchestra = Orchestra()
     command = sys.argv[1]
-
+    if command == "version":
+        console.print(f"[bold blue]Orchestra Version:[/bold blue] {orchestra.__version__}")
+        return
     if command == "install":
         if len(sys.argv) < 3:
             console.print("[bold yellow]Usage:[/bold yellow] orchestra install <extension> [--project]")
@@ -565,22 +660,22 @@ def main() -> None:
     elif command == "list":
         orchestra.list_extensions()
 
-    elif command == "task" or command == "task-monitor":
+    elif command == "task":
         # Direct task command execution
         if len(sys.argv) < 3:
             console.print("\n[bold yellow]Usage:[/bold yellow] orchestra task <subcommand>\n")
-            
+
             console.print("[bold yellow]Subcommands:[/bold yellow]")
             subcommands_table = Table(show_header=False, box=None, padding=(0, 2))
             subcommands_table.add_column("Command", style="bold green")
             subcommands_table.add_column("Description")
-            
+
             subcommands_table.add_row("start", "Interactive task setup")
             subcommands_table.add_row("status", "Check current progress")
             subcommands_table.add_row("next", "Show next priority action")
             subcommands_table.add_row("complete", "Mark current requirement done")
             subcommands_table.add_row("focus", "Quick focus reminder")
-            
+
             console.print(subcommands_table)
             console.print()
             return
@@ -588,8 +683,8 @@ def main() -> None:
         subcommand = sys.argv[2]
 
         # Find the task_monitor.py script
-        local_script = Path(".claude") / "orchestra" / "task-monitor" / "task_monitor.py"
-        global_script = Path.home() / ".claude" / "orchestra" / "task-monitor" / "task_monitor.py"
+        local_script = Path(".claude") / "orchestra" / "task" / "task_monitor.py"
+        global_script = Path.home() / ".claude" / "orchestra" / "task" / "task_monitor.py"
 
         script_path = None
         if local_script.exists():
@@ -597,7 +692,7 @@ def main() -> None:
         elif global_script.exists():
             script_path = global_script
         else:
-            console.print("[bold red]❌ Task monitor not installed.[/bold red] Run: [cyan]orchestra install task-monitor[/cyan]")
+            console.print("[bold red]❌ Task monitor not installed.[/bold red] Run: [cyan]orchestra install task[/cyan]")
             return
 
         # Execute the task monitor script with the subcommand

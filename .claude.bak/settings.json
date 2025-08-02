@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "mcp__ide__getDiagnostics",
+      "Bash(mkdir:*)",
+      "Bash(python3:*)",
+      "Bash(rm:*)",
+      "Bash(pytest:*)",
+      "Bash(find:*)",
+      "Bash(ls:*)",
+      "Bash(mypy:*)",
+      "Bash(chmod:*)",
+      "Bash(python -m pytest tests/test_orchestra.py::TestOrchestra -v)",
+      "Bash(python:*)"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh $HOME/.claude/orchestra/bootstrap.sh hook PreToolUse"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh $HOME/.claude/orchestra/bootstrap.sh hook PostToolUse"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh $HOME/.claude/orchestra/bootstrap.sh hook UserPromptSubmit"
+          }
+        ]
+      }
+    ]
+  }
+}
