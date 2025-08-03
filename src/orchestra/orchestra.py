@@ -17,7 +17,7 @@ from rich.table import Table
 
 class Orchestra:
     def __init__(self) -> None:
-        self.__version__ = "0.6.0"
+        self.__version__ = "0.7.0"
         self.home = Path.home()
         self.global_dir = self.home / ".claude" / "commands"
         self.local_dir = Path(".claude") / "commands"
@@ -179,7 +179,7 @@ if [ "$1" = "hook" ]; then
     # Check for timemachine monitor
     LOCAL_TM="$SCRIPT_DIR/timemachine/timemachine_monitor.py"
     GLOBAL_TM="$HOME/.claude/orchestra/timemachine/timemachine_monitor.py"
-    
+
     # Check for tidy monitor
     LOCAL_TIDY="$SCRIPT_DIR/tidy/tidy_monitor.py"
     GLOBAL_TIDY="$HOME/.claude/orchestra/tidy/tidy_monitor.py"
@@ -252,7 +252,7 @@ exec orchestra "$@"
         else:
             self.console.print(f"[bold red]⚠️ Warning:[/bold red] {monitor_source.name} not found at {monitor_source}")
             return
-            
+
         # For tidy extension, copy additional modules it depends on
         if extension == "tidy":
             tidy_modules = ["project_detector.py", "tool_runners.py"]
@@ -389,7 +389,7 @@ description: {cmd_info['description']}
 
                 with open(tm_dir / f"{cmd_name}.md", 'w') as f:
                     f.write(cmd_content)
-                    
+
         elif extension == "tidy":
             # Create the tidy directory for sub-commands
             tidy_dir = commands_dir / "tidy"
@@ -724,7 +724,7 @@ description: {cmd_info['description']}
                 # Remove the timemachine directory if it's empty
                 if removed_count > 0 and not any(tm_dir.iterdir()):
                     tm_dir.rmdir()
-                    
+
         elif extension == "tidy":
             # Remove tidy sub-commands
             tidy_dir = commands_dir / "tidy"
@@ -938,12 +938,12 @@ def main() -> None:
             # No extension specified, enable all
             console.print("[bold blue]🎼 Enabling all Orchestra extensions...[/bold blue]\n")
             scope = "global"  # Default to global
-            
+
             # Enable each extension
             for ext_id in orchestra.extensions.keys():
                 console.print(f"\n[bold cyan]📦 Enabling {ext_id}...[/bold cyan]")
                 orchestra.enable(ext_id, scope)
-            
+
             console.print("\n[bold green]✨ All extensions enabled![/bold green]")
             console.print("\n[bold yellow]Quick start commands:[/bold yellow]")
             console.print("  [cyan]/task start[/cyan]         - Start a new focused task")
