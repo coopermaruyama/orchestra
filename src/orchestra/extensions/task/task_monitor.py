@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Import from common library
-from orchestra.common import GitAwareExtension, TaskRequirement, HookHandler
+from orchestra.common import GitAwareExtension, TaskRequirement, HookHandler, setup_logger, truncate_value, format_hook_context
 from orchestra.common.types import HookInput, ToolInput
 
 
@@ -33,25 +33,8 @@ class TaskAlignmentMonitor(GitAwareExtension):
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, 'task_monitor.log')
 
-        # Configure logger
-        self.logger = logging.getLogger('task_monitor')
-        self.logger.setLevel(logging.DEBUG)
-
-        # Only add handler if logger doesn't already have handlers
-        if not self.logger.handlers:
-            # File handler with rotation
-            file_handler = logging.FileHandler(log_file, mode='a')
-            file_handler.setLevel(logging.DEBUG)
-
-            # Create formatter
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
-            )
-            file_handler.setFormatter(formatter)
-
-            # Add handler to logger
-            self.logger.addHandler(file_handler)
-
+        # Configure logger with truncation
+        self.logger = setup_logger('task_monitor', log_file, logging.DEBUG, truncate=True, max_length=300)
         self.logger.info("TaskAlignmentMonitor initialized")
 
         # Initialize base class
@@ -126,7 +109,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
     def handle_hook(self, hook_type: str, context: HookInput) -> Dict[str, Any]:
         """Universal hook handler - handles Stop and SubagentStop hooks"""
         self.logger.info(f"Handling hook: {hook_type}")
-        self.logger.debug(f"Hook context: {json.dumps(context, indent=2)}")
+        self.logger.debug(f"Hook context: {format_hook_context(context)}")
         # coontext will be type HookInputTodo
         if hook_type == "Stop":
             return self._handle_stop_hook(context)
@@ -160,7 +143,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
         try:
             # Update current task state with latest git info
             if self.current_task_state:
-                self.logger.debug(f"Current task state exists: {self.current_task_state.branch_name}")
+                self.logger.debug(f"Current task state exists: branch={self.current_task_state.branch_name}")
                 self.update_task_state()
                 self.logger.debug("Task state updated")
             else:
@@ -168,7 +151,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
             # Build analysis context for subagents
             analysis_context = self._build_analysis_context()
-            self.logger.debug(f"Built analysis context (length: {len(analysis_context)} chars)")
+            self.logger.debug(f"Built analysis context: {truncate_value(analysis_context, 150)}")
 
             if self.current_task_state and self.git_manager._is_git_repo():
                 self.logger.debug("Using git-aware subagent analysis")
@@ -217,7 +200,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
                 elif in_assistant_block:
                     assistant_response = line + '\n' + assistant_response
 
-            self.logger.debug(f"Parsed assistant response length: {len(assistant_response)}")
+            self.logger.debug(f"Parsed assistant response: {truncate_value(assistant_response, 200)}")
 
             # Analyze the subagent response
             response_lower = assistant_response.lower()
@@ -287,7 +270,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
             self.logger.info(f"TodoWrite: {len(todos)} todos")
             for todo in todos:
-                self.logger.debug(f"Todo: {todo}")
+                self.logger.debug(f"Todo: {truncate_value(todo, 100)}")
 
             # Allow the tool to proceed
             return HookHandler.create_allow_response()

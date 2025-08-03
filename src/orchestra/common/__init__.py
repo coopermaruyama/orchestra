@@ -10,6 +10,7 @@ from .claude_invoker import ClaudeInvoker, check_predicate, get_invoker, invoke_
 from .git_task_manager import GitTaskManager
 from .subagent_runner import SubagentRunner
 from .task_state import GitTaskState, TaskRequirement
+from .log_utils import setup_logger, truncate_value, format_hook_context, LogContext
 
 __all__ = [
     "BaseExtension",
@@ -22,5 +23,9 @@ __all__ = [
     "TaskRequirement",
     "check_predicate",
     "get_invoker",
-    "invoke_claude"
+    "invoke_claude",
+    "setup_logger",
+    "truncate_value",
+    "format_hook_context",
+    "LogContext"
 ]

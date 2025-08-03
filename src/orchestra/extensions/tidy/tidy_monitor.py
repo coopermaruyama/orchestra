@@ -16,7 +16,7 @@ from rich.panel import Panel
 from rich.prompt import Prompt, Confirm
 
 # Import from common library
-from orchestra.common import BaseExtension, HookHandler
+from orchestra.common import BaseExtension, HookHandler, setup_logger, truncate_value, format_hook_context
 
 # Import tidy-specific modules
 from .project_detector import ProjectDetector
@@ -35,19 +35,8 @@ class TidyMonitor(BaseExtension):
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, 'tidy_monitor.log')
         
-        # Configure logger
-        self.logger = logging.getLogger('tidy_monitor')
-        self.logger.setLevel(logging.DEBUG)
-        
-        if not self.logger.handlers:
-            file_handler = logging.FileHandler(log_file, mode='a')
-            file_handler.setLevel(logging.DEBUG)
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
-            )
-            file_handler.setFormatter(formatter)
-            self.logger.addHandler(file_handler)
-        
+        # Configure logger with truncation
+        self.logger = setup_logger('tidy_monitor', log_file, logging.DEBUG, truncate=True, max_length=300)
         self.logger.info("TidyMonitor initialized")
         
         # Initialize base class
@@ -151,6 +140,7 @@ class TidyMonitor(BaseExtension):
     def handle_hook(self, hook_event: str, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle Claude Code hook events"""
         self.logger.info(f"Handling hook event: {hook_event}")
+        self.logger.debug(f"Hook context: {format_hook_context(context)}")
         
         if hook_event == "Stop":
             return self._handle_stop_hook(context)

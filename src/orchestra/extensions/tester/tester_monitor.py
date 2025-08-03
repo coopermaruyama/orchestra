@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 # Import from common library
-from orchestra.common import GitAwareExtension, HookHandler
+from orchestra.common import GitAwareExtension, HookHandler, setup_logger, truncate_value, format_hook_context
 from orchestra.common.types import HookInput
 
 
@@ -81,25 +81,8 @@ class TesterMonitor(GitAwareExtension):
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, 'tester_monitor.log')
         
-        # Configure logger
-        self.logger = logging.getLogger('tester_monitor')
-        self.logger.setLevel(logging.DEBUG)
-        
-        # Only add handler if logger doesn't already have handlers
-        if not self.logger.handlers:
-            # File handler with rotation
-            file_handler = logging.FileHandler(log_file, mode='a')
-            file_handler.setLevel(logging.DEBUG)
-            
-            # Create formatter
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(funcName)s:%(lineno)d - %(message)s'
-            )
-            file_handler.setFormatter(formatter)
-            
-            # Add handler to logger
-            self.logger.addHandler(file_handler)
-        
+        # Configure logger with truncation
+        self.logger = setup_logger('tester_monitor', log_file, logging.DEBUG, truncate=True, max_length=300)
         self.logger.info("TesterMonitor initialized")
         
         # Initialize base class
@@ -194,7 +177,7 @@ class TesterMonitor(GitAwareExtension):
     def handle_hook(self, hook_type: str, context: HookInput) -> Dict[str, Any]:
         """Universal hook handler"""
         self.logger.info(f"Handling hook: {hook_type}")
-        self.logger.debug(f"Hook context: {json.dumps(context, indent=2)}")
+        self.logger.debug(f"Hook context: {format_hook_context(context)}")
         
         if hook_type == "PostToolUse":
             return self._handle_post_tool_use_hook(context)

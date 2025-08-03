@@ -1242,23 +1242,28 @@ def main() -> None:
         extension_filter = None
         tail_mode = False
         clear_logs = False
+        no_truncate = False
 
         for arg in sys.argv[2:]:
             if arg == "--tail" or arg == "-f":
                 tail_mode = True
             elif arg == "--clear":
                 clear_logs = True
+            elif arg == "--no-truncate":
+                no_truncate = True
             elif arg == "--help" or arg == "-h":
-                console.print("\n[bold yellow]Usage:[/bold yellow] orchestra logs [extension] [--tail] [--clear]\n")
+                console.print("\n[bold yellow]Usage:[/bold yellow] orchestra logs [extension] [--tail] [--clear] [--no-truncate]\n")
                 console.print("[bold yellow]Options:[/bold yellow]")
-                console.print("  [dim]extension[/dim]  Filter logs for specific extension (task, timemachine)")
-                console.print("  [dim]--tail[/dim]     Follow log output (like tail -f)")
-                console.print("  [dim]--clear[/dim]    Clear all Orchestra logs")
+                console.print("  [dim]extension[/dim]      Filter logs for specific extension (task, timemachine)")
+                console.print("  [dim]--tail[/dim]         Follow log output (like tail -f)")
+                console.print("  [dim]--clear[/dim]        Clear all Orchestra logs")
+                console.print("  [dim]--no-truncate[/dim]  Show full log values without truncation")
                 console.print("\n[bold yellow]Examples:[/bold yellow]")
-                console.print("  [dim]$[/dim] orchestra logs           # View all logs")
-                console.print("  [dim]$[/dim] orchestra logs task      # View task monitor logs")
-                console.print("  [dim]$[/dim] orchestra logs --tail    # Follow all logs")
-                console.print("  [dim]$[/dim] orchestra logs --clear   # Clear all logs\n")
+                console.print("  [dim]$[/dim] orchestra logs                # View all logs")
+                console.print("  [dim]$[/dim] orchestra logs task           # View task monitor logs")
+                console.print("  [dim]$[/dim] orchestra logs --tail         # Follow all logs")
+                console.print("  [dim]$[/dim] orchestra logs --no-truncate  # View logs with full values")
+                console.print("  [dim]$[/dim] orchestra logs --clear        # Clear all logs\n")
                 return
             elif not arg.startswith("-"):
                 extension_filter = arg
@@ -1409,6 +1414,11 @@ def main() -> None:
 
                         for line in lines:
                             line = line.rstrip()
+                            
+                            # If no_truncate is False and line contains [truncated], show a hint
+                            if not no_truncate and "[truncated]" in line:
+                                line = line.replace("[truncated]", "[truncated - use --no-truncate to see full]")
+                            
                             # Color code log levels
                             if "ERROR" in line or "CRITICAL" in line:
                                 console.print(f"[red]{line}[/red]")
@@ -1427,6 +1437,8 @@ def main() -> None:
                 console.print()  # Empty line between logs
 
             console.print("[dim]Tip: Use 'orchestra logs --tail' to follow logs in real-time[/dim]")
+            if not no_truncate:
+                console.print("[dim]     Use 'orchestra logs --no-truncate' to see full log values[/dim]")
 
     else:
         console.print(f"[bold red]Unknown command:[/bold red] {command}")
