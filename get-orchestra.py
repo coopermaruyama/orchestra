@@ -11,6 +11,24 @@ Usage:
 import subprocess
 import sys
 import os
+import shutil
+
+def check_command_exists(cmd):
+    """Check if a command exists in PATH"""
+    return shutil.which(cmd) is not None
+
+def run_command(cmd, capture_output=True):
+    """Run a command and return success status"""
+    try:
+        if capture_output:
+            subprocess.check_call(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+        else:
+            subprocess.check_call(cmd)
+        return True
+    except subprocess.CalledProcessError:
+        return False
+    except Exception:
+        return False
 
 def main():
     print("🎼 Orchestra Quick Installer")
@@ -23,36 +41,63 @@ def main():
     
     print(f"✅ Python {sys.version_info.major}.{sys.version_info.minor} detected")
     
+    # Check for pipx
+    has_pipx = check_command_exists("pipx")
+    
     # Install Orchestra
     print("\n📦 Installing Orchestra...")
     
-    install_cmd = [
-        sys.executable, "-m", "pip", "install", "--user", "--upgrade",
-        "git+https://github.com/coopermaruyama/orchestra.git"
-    ]
+    if has_pipx:
+        print("✨ Found pipx - using isolated install (recommended)")
+        
+        # Try pipx install
+        if run_command(["pipx", "install", "git+https://github.com/coopermaruyama/orchestra.git"]):
+            print("✅ Orchestra installed successfully with pipx!")
+        elif run_command(["pipx", "install", "--force", "git+https://github.com/coopermaruyama/orchestra.git"]):
+            print("✅ Orchestra updated successfully with pipx!")
+        else:
+            print("⚠️  pipx install failed, falling back to pip...")
+            has_pipx = False
     
-    try:
-        subprocess.check_call(install_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-        print("✅ Orchestra installed successfully!")
-    except subprocess.CalledProcessError:
-        # Try with --break-system-packages for newer pip versions
-        print("⚠️  Retrying with --break-system-packages...")
-        install_cmd.insert(-1, "--break-system-packages")
-        try:
-            subprocess.check_call(install_cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-            print("✅ Orchestra installed successfully!")
-        except subprocess.CalledProcessError as e:
-            print("❌ Installation failed")
-            print("\nPlease try manual installation:")
-            print("  git clone https://github.com/coopermaruyama/orchestra.git")
-            print("  cd orchestra")
-            print("  pip install .")
-            sys.exit(1)
+    if not has_pipx:
+        # Fall back to pip
+        print("📦 Using pip for installation...")
+        
+        install_cmd = [
+            sys.executable, "-m", "pip", "install", "--user", "--upgrade",
+            "git+https://github.com/coopermaruyama/orchestra.git"
+        ]
+        
+        if run_command(install_cmd):
+            print("✅ Orchestra installed successfully with pip!")
+        else:
+            # Try with --break-system-packages for newer pip versions
+            print("⚠️  Retrying with --break-system-packages...")
+            install_cmd.insert(-1, "--break-system-packages")
+            
+            if run_command(install_cmd):
+                print("✅ Orchestra installed successfully!")
+            else:
+                print("❌ Installation failed")
+                print("\nPlease try manual installation:")
+                print("  git clone https://github.com/coopermaruyama/orchestra.git")
+                print("  cd orchestra")
+                print("  pip install .")
+                sys.exit(1)
     
     # Check if orchestra is in PATH
-    user_base = subprocess.check_output([sys.executable, "-m", "site", "--user-base"]).decode().strip()
-    user_bin = os.path.join(user_base, "bin")
-    orchestra_path = os.path.join(user_bin, "orchestra")
+    if check_command_exists("orchestra"):
+        print("✅ Orchestra is available in PATH")
+    else:
+        # Provide PATH instructions based on install method
+        if has_pipx:
+            print("\n⚠️  Orchestra installed but not in PATH")
+            print("Run: pipx ensurepath")
+            print("Then restart your terminal")
+        else:
+            user_base = subprocess.check_output([sys.executable, "-m", "site", "--user-base"]).decode().strip()
+            user_bin = os.path.join(user_base, "bin")
+            print(f"\n⚠️  Add to PATH: export PATH=\"$PATH:{user_bin}\"")
     
     print("\n🎉 Installation complete!")
     print("\nNext steps:")
@@ -60,8 +105,9 @@ def main():
     print("2. Or specific extension:     orchestra enable task")
     print("3. Use in Claude Code:        /task start")
     
-    if not os.path.exists(orchestra_path):
-        print(f"\n⚠️  Add to PATH: export PATH=\"$PATH:{user_bin}\"")
+    if not has_pipx:
+        print("\n💡 Tip: Install pipx for better Python app management:")
+        print("   python3 -m pip install --user pipx")
     
     print("\nFor more info: https://github.com/coopermaruyama/orchestra")
 

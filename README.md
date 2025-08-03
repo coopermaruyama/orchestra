@@ -16,9 +16,14 @@ curl -sSL https://raw.githubusercontent.com/coopermaruyama/orchestra/main/instal
 ### Manual Install
 
 ```bash
-# Clone and install Orchestra system-wide
+# Clone repository
 git clone https://github.com/coopermaruyama/orchestra.git
 cd orchestra
+
+# Install with pipx (recommended)
+pipx install .
+
+# Or install with pip
 pip install --user .
 ```
 
@@ -106,7 +111,16 @@ Automated code quality checker that ensures code meets project standards. Runs l
 
 ### Prerequisites
 - Python 3.8+
-- pip (for `--user` install) or pipx (recommended for isolated install)
+- pipx (recommended) or pip
+
+#### Why pipx?
+pipx installs Python applications in isolated environments, preventing dependency conflicts. The installers will automatically use pipx if available, otherwise fall back to pip.
+
+To install pipx:
+```bash
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
+```
 
 ### Install Orchestra
 
