@@ -14,7 +14,7 @@ from pathlib import Path
 # Add the src directory to the path so we can import orchestra modules
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from orchestra.extensions.task_monitor.task_monitor import TaskAlignmentMonitor, TaskRequirement
+from orchestra.extensions.task.task_monitor import TaskAlignmentMonitor, TaskRequirement
 
 
 class TestDeviationDetection(unittest.TestCase):

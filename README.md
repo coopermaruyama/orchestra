@@ -4,17 +4,35 @@
 
 ## Quick Start
 
+### One-liner Install
+
+```bash
+# Quick install (recommended)
+curl -sSL https://raw.githubusercontent.com/coopermaruyama/orchestra/main/get-orchestra.py | python3
+
+curl -sSL https://raw.githubusercontent.com/coopermaruyama/orchestra/main/install.sh | sh
+```
+
+### Manual Install
+
 ```bash
 # Clone and install Orchestra system-wide
-git clone git@github.com:coopermaruyama/orchestra.git
+git clone https://github.com/coopermaruyama/orchestra.git
 cd orchestra
 pip install --user .
+```
 
-# Enable task-monitor extension (globally by default)
-orchestra enable task-monitor
+### Enable Extensions
+
+```bash
+# Enable all extensions at once
+orchestra enable
+
+# Or enable a specific extension
+orchestra enable task
 
 # Or enable to current project only
-orchestra enable task-monitor --project
+orchestra enable task --project
 
 # Use it in Claude Code
 /task start

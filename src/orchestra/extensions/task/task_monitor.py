@@ -8,13 +8,14 @@ import json
 import sys
 import os
 import logging
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, Any, List, cast
 from dataclasses import asdict
 from datetime import datetime
 from pathlib import Path
 
 # Import from common library
 from orchestra.common import GitAwareExtension, TaskRequirement, HookHandler
+from orchestra.common.types import HookInput, ToolInput
 
 
 class TaskAlignmentMonitor(GitAwareExtension):
@@ -103,11 +104,30 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
         super().save_config(config)
 
-    def handle_hook(self, hook_type: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    # Example: 2025-08-02 05:49:23,914 - task_monitor - INFO - handle_hook:108 - Handling hook: PostToolUse
+    # 2025-08-02 05:49:23,914 - task_monitor - DEBUG - handle_hook:109 - Hook context: {
+    #   "session_id": "05e96406-4f76-4790-9058-d9032e834f3b",
+    #   "transcript_path": "/Users/coopermaruyama/.claude/projects/-Users-coopermaruyama-Developer-orchestra/05e96406-4f76-4790-9058-d9032e834f3b.jsonl",
+    #   "cwd": "/Users/coopermaruyama/Developer/orchestra",
+    #   "hook_event_name": "PostToolUse",
+    #   "tool_name": "TodoWrite",
+    #   "tool_input": {
+    #     "todos": [
+    #       {
+    #         "content": "Research current Orchestra architecture and extension structure",
+    #         "status": "in_progress",
+    #         "priority": "high",
+    #         "id": "research-architecture"
+    #       },
+    #       {
+    #         "content": "Design the tidy extension structure and state management",
+    #         "status": "pending",
+    #         "priority": "high",
+    def handle_hook(self, hook_type: str, context: HookInput) -> Dict[str, Any]:
         """Universal hook handler - handles Stop and SubagentStop hooks"""
         self.logger.info(f"Handling hook: {hook_type}")
         self.logger.debug(f"Hook context: {json.dumps(context, indent=2)}")
-
+        # coontext will be type HookInputTodo
         if hook_type == "Stop":
             return self._handle_stop_hook(context)
         elif hook_type == "SubagentStop":
@@ -123,7 +143,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
         return context
 
-    def _handle_stop_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_stop_hook(self, context: HookInput) -> Dict[str, Any]:
         """Handle Stop hook by analyzing conversation and determining if Claude should continue"""
         self.logger.debug(f"_handle_stop_hook called with context keys: {list(context.keys())}")
 
@@ -165,7 +185,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
             self.logger.error(f"Traceback:\n{traceback.format_exc()}")
             return self._fallback_analysis()
 
-    def _handle_subagent_stop_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_subagent_stop_hook(self, context: HookInput) -> Dict[str, Any]:
         """Handle SubagentStop hook by parsing subagent results"""
         self.logger.debug(f"_handle_subagent_stop_hook called with context keys: {list(context.keys())}")
 
@@ -315,21 +335,37 @@ class TaskAlignmentMonitor(GitAwareExtension):
             self.logger.error(f"Error in PreToolUse hook: {e}")
             return HookHandler.create_allow_response()
 
-    def _handle_post_tool_use_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
+    def _handle_post_tool_use_hook(self, context: HookInput) -> Dict[str, Any]:
         """Handle PostToolUse hook by logging the tool result"""
         tool_name = context.get('tool_name', 'unknown')
-        self.logger.info(f"PostToolUse hook: {tool_name}")
+        event_name = context.get('hook_event_name', 'unknown')
+        is_todo_write = tool_name == 'TodoWrite'
+        self.logger.info(f"PostToolUse hook: tool={tool_name} event={event_name}")
 
         try:
             # Log the tool response
             tool_response = context.get('tool_response', {})
             self.logger.debug(f"Tool response: {json.dumps(tool_response, indent=2)}")
+            tool_input = context.get('tool_input', {})
+
+            if is_todo_write:
+                # If this is a TodoWrite, sync the todos from tool_input
+                todos = tool_input.get('todos', [])
+                self.logger.info(f"PostToolUse TodoWrite: {len(todos)} todos to sync")
+                
+                # Sync Claude's todos into our task monitor state
+                self._sync_claude_todos(todos)
+                
+                # Save the updated state
+                self.save_config()
 
             # Allow the tool to proceed
             return HookHandler.create_allow_response()
 
         except Exception as e:
             self.logger.error(f"Error in PostToolUse hook: {e}")
+            import traceback
+            self.logger.error(f"Traceback:\n{traceback.format_exc()}")
             return HookHandler.create_allow_response()
 
     def _build_analysis_context(self) -> str:
@@ -467,6 +503,53 @@ Respond with JSON in this exact format:
         self.logger.info("Allowing stop - no core requirements remain")
         return HookHandler.create_allow_response()
 
+    def _sync_claude_todos(self, todos: List[Dict[str, Any]]) -> None:
+        """Sync Claude's todo list into task monitor requirements
+        
+        Args:
+            todos: List of todo items from Claude's TodoWrite tool
+        """
+        self.logger.info(f"Syncing {len(todos)} todos from Claude")
+        
+        # Clear existing requirements
+        self.requirements = []
+        
+        # Convert Claude's todos to TaskRequirements
+        for i, todo in enumerate(todos):
+            # Map Claude's priority (high/medium/low) to numeric (1-5)
+            priority_map = {
+                'high': 1,
+                'medium': 2,
+                'low': 3
+            }
+            priority = priority_map.get(todo.get('priority', 'medium'), 2)
+            
+            # Map Claude's status to completed boolean
+            status = todo.get('status', 'pending')
+            completed = status == 'completed'
+            
+            # Create TaskRequirement
+            requirement = TaskRequirement(
+                id=todo.get('id', str(i)),
+                description=todo.get('content', ''),
+                priority=priority,
+                completed=completed
+            )
+            
+            self.requirements.append(requirement)
+            self.logger.debug(f"Synced todo: {requirement.description} (P{priority}, {'completed' if completed else 'pending'})")
+        
+        # Update task description if we have todos
+        if todos and not self.task:
+            # Use the first high-priority todo as the task description
+            high_priority_todos = [t for t in todos if t.get('priority') == 'high']
+            if high_priority_todos:
+                self.task = f"Task: {high_priority_todos[0].get('content', 'Unnamed task')}"
+            else:
+                self.task = f"Task with {len(todos)} requirements"
+        
+        self.logger.info(f"Task monitor state synced: {len(self.requirements)} requirements")
+
 
 
     def _get_progress(self) -> Dict[str, Any]:
@@ -502,32 +585,30 @@ def main() -> None:
         print("Claude Code Task Monitor")
         print("Usage: task_monitor.py <command> [args]")
         print("\nCommands:")
-        print("  start                           - Interactive task setup")
-        print("  init <task> <req1> <req2> ...  - Initialize task")
-        print("  status                          - Show progress")
-        print("  reset                           - Reset progress")
+        print("  init                            - Initialize task monitor hooks")
+        print("  status                          - Show progress (synced from Claude)")
         print("  hook <type>                     - Handle Claude Code hook")
+        print("\nDeprecated commands (use Claude's todo system instead):")
+        print("  start                           - Use Claude's todo management")
+        print("  reset                           - Todos sync from Claude automatically")
         return
 
     monitor = TaskAlignmentMonitor()
     command = sys.argv[1]
 
     if command == "start":
-        # Check if we can do interactive input
-        # In Claude Code, stdin is not a TTY, so input() will fail
-        if not sys.stdin.isatty():
-            # Non-interactive environment (like Claude Code slash command)
-            print("🚀 Claude Code Task Setup")
-            print("\n⚠️  Interactive mode not available in this environment.")
-            print("\nTo set up a task, you have two options:")
-            print("\n1. Run this command directly in your terminal:")
-            print(f"   cd {os.getcwd()}")
-            print(f"   python3 {os.path.abspath(__file__)} start")
-            print("\n2. Use the quick init command with arguments:")
-            print("   /task init '<task description>' '<requirement 1>' '<requirement 2>' ...")
-            print("\nExample:")
-            print("   /task init 'Fix login bug' 'Reproduce the issue' 'Fix root cause' 'Add tests'")
-            return  # Exit gracefully instead of sys.exit
+        # Redirect to Claude's todo management
+        print("🚀 Claude Code Task Setup")
+        print("\nℹ️  Task management is now integrated with Claude's todo system!")
+        print("\n💡 How to use:")
+        print("   1. Claude will automatically create and manage todos during conversations")
+        print("   2. Task monitor will sync these todos and provide focus guidance")
+        print("   3. Use '/task status' to see your current progress")
+        print("\n✨ Example:")
+        print("   User: 'Help me fix the login bug and add tests'")
+        print("   Claude: *creates todos automatically*")
+        print("   Task monitor: *syncs and tracks progress*")
+        return
 
         # Interactive task setup with intelligent prompting
         print("🚀 Claude Code Task Setup\n")
@@ -774,76 +855,27 @@ def main() -> None:
         return main()
 
     elif command == "init":
-        if len(sys.argv) < 4:
-            print("Usage: orchestra task init '<task>' '<req1>' '<req2>' ...")
-            return
-
-        monitor.task = sys.argv[2]
-        monitor.requirements = []
-
-        # Add requirements with smart priority
-        for i, desc in enumerate(sys.argv[3:], 1):
-            priority = 1 if i <= 2 else (2 if i <= 4 else 3)
-            monitor.requirements.append(
-                TaskRequirement(id=str(i), description=desc, priority=priority)
-            )
-
-        # Create git task snapshot if in a git repository
-        if monitor.git_manager._is_git_repo():
-            try:
-                task_state = monitor.create_task_snapshot(
-                    task_description=monitor.task
-                )
-                print(f"📸 Created git task snapshot: {task_state.subagent_branches.get('wip_snapshot', 'refs/wip/' + task_state.branch_name)}")
-            except Exception as e:
-                print(f"⚠️  Could not create git task snapshot: {e}")
-
-        monitor.save_config()
-
-        # Create hooks configuration for Claude Code settings
-        hooks_config = {
-            "hooks": {
-                "Stop": [
-                    {
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": f"python {os.path.abspath(__file__)} hook Stop"
-                            }
-                        ]
-                    }
-                ],
-                "SubagentStop": [
-                    {
-                        "hooks": [
-                            {
-                                "type": "command",
-                                "command": f"python {os.path.abspath(__file__)} hook SubagentStop"
-                            }
-                        ]
-                    }
-                ]
-            }
-        }
-
-        # Update .claude/settings.local.json with hooks
-        os.makedirs('.claude', exist_ok=True)
-        settings_file = '.claude/settings.local.json'
-        if os.path.exists(settings_file):
-            with open(settings_file, 'r') as f:
-                settings = json.load(f)
+        # Show that hooks are managed by Orchestra
+        print("🎼 Task Monitor Initialized")
+        print("\nℹ️  Hooks are managed by Orchestra")
+        print("   Run 'orchestra enable task' to set up all hooks properly")
+        print("\n📝 Task requirements will be synced from Claude's TodoWrite tool")
+        print("\n💡 How it works:")
+        print("   1. Claude automatically creates and manages todos during conversations")
+        print("   2. Task monitor syncs these todos via PostToolUse hook")
+        print("   3. Use '/task status' to see your current progress")
+        print("   4. Task monitor provides focus guidance based on Claude's todos")
+        
+        # Check if Orchestra is properly set up
+        bootstrap_local = Path(".claude/orchestra/bootstrap.sh")
+        bootstrap_global = Path.home() / ".claude/orchestra/bootstrap.sh"
+        
+        if not bootstrap_local.exists() and not bootstrap_global.exists():
+            print("\n⚠️  Orchestra not detected. Please run:")
+            print("   orchestra enable task")
         else:
-            settings = {}
-
-        settings.update(hooks_config)
-
-        with open(settings_file, 'w') as f:
-            json.dump(settings, f, indent=2)
-
-        print(f"✅ Initialized: {monitor.task}")
-        print(f"📋 Requirements: {len(monitor.requirements)}")
-        print("🪝 Hooks configured in .claude/settings.local.json")
-
+            print("\n✅ Orchestra detected - hooks should be working")
+        
         # Check if .claude/orchestra/ is in .gitignore
         working_dir = os.environ.get('CLAUDE_WORKING_DIR', '.')
         gitignore_path = Path(working_dir) / ".gitignore"
@@ -851,23 +883,19 @@ def main() -> None:
             with open(gitignore_path, 'r') as f:
                 gitignore_content = f.read()
                 if '.claude/orchestra/' not in gitignore_content:
-                    print("\n⚠️  Consider adding '.claude/orchestra/' to your .gitignore file")
-                    print("   This directory contains local extension state and shouldn't be committed")
-
-        print("\nRequirements:")
-        for requirement in monitor.requirements:
-            print(f"  - {requirement.description} (Priority {requirement.priority})")
+                    print("\n💡 Tip: Consider adding '.claude/orchestra/' to your .gitignore file")
 
     elif command == "status":
-        if not monitor.task:
-            print("No task configured. Run: orchestra task init")
+        if not monitor.requirements:
+            print("📋 No todos synced from Claude yet.")
+            print("\n💡 Todos will sync automatically when Claude uses the TodoWrite tool")
             return
 
         progress = monitor._get_progress()
-        print(f"\n📌 Task: {monitor.task}")
+        print(f"\n📌 Task: {monitor.task or 'Synced from Claude'}")
         print(f"📊 Progress: {progress['percentage']:.0f}% complete")
         print(f"📈 Stats: {monitor.stats['commands']} commands, {monitor.stats['deviations']} deviations")
-        print(f"\nRequirements:")
+        print(f"\n📋 Requirements (synced from Claude):")
 
         for requirement in monitor.requirements:
             icon = "✅" if requirement.completed else "⏳"
@@ -875,13 +903,14 @@ def main() -> None:
 
         if progress['percentage'] < 100:
             print(f"\n➡️  Next: {monitor._get_next_action()}")
+        
+        print("\n🔄 Auto-synced from Claude's todo list")
 
     elif command == "reset":
-        for requirement in monitor.requirements:
-            requirement.completed = False
-        monitor.stats = {'deviations': 0, 'commands': 0}
-        monitor.save_config()
-        print("✅ Progress reset")
+        # Deprecated - todos sync from Claude
+        print("ℹ️  Todo management is now handled through Claude's todo system")
+        print("   Task monitor syncs automatically from Claude's todos")
+        print("   To reset todos, update them in your conversation with Claude")
 
     elif command == "hook":
         if len(sys.argv) < 3:
@@ -903,23 +932,19 @@ def main() -> None:
         slash_config = {
             "commands": {
                 "/task": {
-                    "description": "Manage task alignment and focus",
+                    "description": "Task monitor synced with Claude's todos",
                     "subcommands": {
-                        "start": {
-                            "description": "Start a new task with guided setup",
-                            "command": f"python {os.path.abspath(__file__)} start"
+                        "init": {
+                            "description": "Initialize task monitor hooks",
+                            "command": f"python {os.path.abspath(__file__)} init"
                         },
                         "status": {
-                            "description": "Check current task progress",
+                            "description": "Check progress (synced from Claude's todos)",
                             "command": f"python {os.path.abspath(__file__)} status"
                         },
                         "next": {
                             "description": "Show next priority action",
                             "command": f"python {os.path.abspath(__file__)} next"
-                        },
-                        "complete": {
-                            "description": "Mark current requirement as complete",
-                            "command": f"python {os.path.abspath(__file__)} complete"
                         },
                         "focus": {
                             "description": "Get reminder of current focus area",
@@ -928,7 +953,7 @@ def main() -> None:
                     }
                 },
                 "/focus": {
-                    "description": "Quick reminder of what to work on next",
+                    "description": "Quick reminder of what to work on next (from Claude's todos)",
                     "command": f"python {os.path.abspath(__file__)} focus"
                 }
             }
@@ -964,25 +989,12 @@ def main() -> None:
             print(f"⚠️  {monitor.stats['deviations']} deviations detected this session")
 
     elif command == "complete":
-        # Mark current requirement as complete
-        if not monitor.task:
-            print("No task configured.")
-            return
-
-        for requirement in monitor.requirements:
-            if not requirement.completed:
-                requirement.completed = True
-                monitor.save_config()
-                print(f"✅ Completed: {requirement.description}")
-
-                # Show next
-                progress = monitor._get_progress()
-                if progress['percentage'] < 100:
-                    print(f"\n📊 Progress: {progress['percentage']:.0f}% ({progress['completed']}/{progress['total']})")
-                    print(f"📌 Next: {monitor._get_current_requirement()}")
-                else:
-                    print("\n🎉 All requirements complete!")
-                break
+        # Deprecated - todos are managed through Claude's TodoWrite
+        print("ℹ️  Todo completion is now managed through Claude's todo system")
+        print("   Task monitor syncs automatically from Claude's todos")
+        print("\n💡 To mark a todo as complete:")
+        print("   1. Let Claude update its todo list during the conversation")
+        print("   2. Task monitor will automatically sync the changes")
 
 if __name__ == "__main__":
     main()
