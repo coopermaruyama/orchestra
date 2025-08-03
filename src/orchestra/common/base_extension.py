@@ -9,9 +9,11 @@ import json
 import os
 import sys
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional, List
-from pathlib import Path
+from typing import Any, Dict, List, Optional
 
+from orchestra.common.types import HookInput
+
+from .claude_invoker import check_predicate, invoke_claude
 from .git_task_manager import GitTaskManager
 from .subagent_runner import SubagentRunner
 from .task_state import GitTaskState
@@ -28,19 +30,18 @@ class BaseExtension(ABC):
             working_dir: Working directory for the extension
         """
         self.working_dir = working_dir or os.getcwd()
-        
+
         # If no config file specified, use the new orchestra directory structure
         if config_file is None:
-            orchestra_dir = os.path.join(self.working_dir, '.claude', 'orchestra')
+            orchestra_dir = os.path.join(self.working_dir, ".claude", "orchestra")
             os.makedirs(orchestra_dir, exist_ok=True)
             config_file = os.path.join(orchestra_dir, self.get_default_config_filename())
-        
+
         self.config_file = config_file
 
     @abstractmethod
     def get_default_config_filename(self) -> str:
         """Get the default configuration file name for this extension"""
-        pass
 
     @abstractmethod
     def handle_hook(self, hook_event: str, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -53,15 +54,14 @@ class BaseExtension(ABC):
         Returns:
             Hook response data
         """
-        pass
 
     def load_config(self) -> Dict[str, Any]:
         """Load configuration from file"""
         if os.path.exists(self.config_file):
             try:
-                with open(self.config_file, 'r') as f:
+                with open(self.config_file) as f:
                     return json.load(f)
-            except (json.JSONDecodeError, IOError) as e:
+            except (OSError, json.JSONDecodeError) as e:
                 print(f"Warning: Failed to load config from {self.config_file}: {e}")
         return {}
 
@@ -69,14 +69,14 @@ class BaseExtension(ABC):
         """Save configuration to file"""
         try:
             os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
-            with open(self.config_file, 'w') as f:
+            with open(self.config_file, "w") as f:
                 json.dump(config, f, indent=2)
-        except IOError as e:
+        except OSError as e:
             print(f"Error: Failed to save config to {self.config_file}: {e}")
 
     def is_claude_code_environment(self) -> bool:
         """Check if running inside Claude Code"""
-        return os.environ.get('CLAUDECODE') == '1'
+        return os.environ.get("CLAUDECODE") == "1"
 
 
 class GitAwareExtension(BaseExtension):
@@ -132,7 +132,7 @@ class GitAwareExtension(BaseExtension):
         if not config:
             return None
 
-        task_data = config.get('git_task_state')
+        task_data = config.get("git_task_state")
 
         if task_data:
             try:
@@ -151,7 +151,7 @@ class GitAwareExtension(BaseExtension):
             task_state: Task state to save
         """
         config = self.load_config()
-        config['git_task_state'] = task_state.to_dict()
+        config["git_task_state"] = task_state.to_dict()
         self.save_config(config)
 
         # Update current task state
@@ -200,8 +200,8 @@ class GitAwareExtension(BaseExtension):
         """
         if not self._current_task_state:
             return {
-                'error': 'No current task state. Create a task branch first.',
-                'suggestion': 'Call create_task_branch() to initialize task tracking'
+                "error": "No current task state. Create a task branch first.",
+                "suggestion": "Call create_task_branch() to initialize task tracking"
             }
 
         return self.subagent_runner.invoke_subagent(
@@ -224,8 +224,8 @@ class GitAwareExtension(BaseExtension):
         """
         if not self._current_task_state:
             return {
-                'error': 'No current task state. Create a task branch first.',
-                'suggestion': 'Call create_task_branch() to initialize task tracking'
+                "error": "No current task state. Create a task branch first.",
+                "suggestion": "Call create_task_branch() to initialize task tracking"
             }
 
         return self.subagent_runner.invoke_multiple_subagents(
@@ -233,6 +233,111 @@ class GitAwareExtension(BaseExtension):
             task_state=self._current_task_state,
             analysis_context=analysis_context
         )
+
+    def should_invoke_subagent(self, subagent_type: str,
+                              analysis_context: str,
+                              include_diff: bool = True) -> Dict[str, Any]:
+        """Check if a subagent should be invoked using predicate system
+        
+        Args:
+            subagent_type: Type of subagent to check
+            analysis_context: Context for analysis
+            include_diff: Whether to include git diff in check
+            
+        Returns:
+            Dict with 'should_invoke' (bool), 'reasoning', and metadata
+        """
+        if not self._current_task_state:
+            return {
+                "should_invoke": False,
+                "reasoning": "No current task state available",
+                "error": True
+            }
+
+        return self.subagent_runner.should_invoke_subagent(
+            subagent_type=subagent_type,
+            task_state=self._current_task_state,
+            analysis_context=analysis_context,
+            include_diff=include_diff
+        )
+
+    def check_all_subagents(self, analysis_context: str,
+                           include_diff: bool = True) -> Dict[str, Any]:
+        """Check all subagents to see which ones should be invoked
+        
+        Args:
+            analysis_context: Context for analysis
+            include_diff: Whether to include git diff
+            
+        Returns:
+            Dict with recommendations for each subagent
+        """
+        if not self._current_task_state:
+            return {
+                "error": "No current task state available",
+                "has_recommendations": False
+            }
+
+        return self.subagent_runner.check_all_subagents(
+            task_state=self._current_task_state,
+            analysis_context=analysis_context,
+            include_diff=include_diff
+        )
+
+    def check_predicate(self, question: str,
+                       context: Optional[Dict[str, Any]] = None,
+                       include_git_diff: bool = False) -> Dict[str, Any]:
+        """Check a yes/no predicate using Claude
+        
+        Args:
+            question: Yes/no question to ask
+            context: Additional context
+            include_git_diff: Whether to include git diff
+            
+        Returns:
+            Dict with 'answer' (bool), 'confidence', 'reasoning'
+        """
+        # Add task context if available
+        if self._current_task_state and context is None:
+            context = {}
+
+        if self._current_task_state:
+            context = context or {}
+            context["task_description"] = self._current_task_state.task_description
+            context["task_branch"] = self._current_task_state.branch_name
+
+        return check_predicate(
+            question=question,
+            context=context,
+            include_git_diff=include_git_diff
+        )
+
+    def invoke_claude(self, prompt: str,
+                     model: Optional[str] = None,
+                     include_task_context: bool = True,
+                     **kwargs) -> Dict[str, Any]:
+        """Invoke Claude with optional task context
+        
+        Args:
+            prompt: Prompt for Claude
+            model: Model to use (or alias)
+            include_task_context: Whether to include current task context
+            **kwargs: Additional arguments for invoke_claude
+            
+        Returns:
+            Claude response
+        """
+        # Build context if requested
+        context = kwargs.get("context", {})
+
+        if include_task_context and self._current_task_state:
+            context["task_description"] = self._current_task_state.task_description
+            context["task_branch"] = self._current_task_state.branch_name
+            context["changed_files"] = self.get_task_file_changes()
+
+        kwargs["context"] = context if context else None
+
+        return invoke_claude(prompt=prompt, model=model, **kwargs)
 
     def update_task_state(self) -> Optional[GitTaskState]:
         """Update current task state with latest git information
@@ -278,11 +383,11 @@ class GitAwareExtension(BaseExtension):
         subagent_validation = self.subagent_runner.validate_subagent_environment()
 
         return {
-            'git_status': git_status,
-            'subagent_environment': subagent_validation,
-            'current_task': self._current_task_state.to_dict() if self._current_task_state else None,
-            'config_file': self.config_file,
-            'working_directory': self.working_dir
+            "git_status": git_status,
+            "subagent_environment": subagent_validation,
+            "current_task": self._current_task_state.to_dict() if self._current_task_state else None,
+            "config_file": self.config_file,
+            "working_directory": self.working_dir
         }
 
     def get_available_subagents(self) -> Dict[str, str]:
@@ -305,8 +410,8 @@ class HookHandler:
             return json.loads(input_data)
         except json.JSONDecodeError as e:
             return {
-                'error': f'Invalid JSON input: {e}',
-                'raw_input': input_data
+                "error": f"Invalid JSON input: {e}",
+                "raw_input": input_data
             }
 
     @staticmethod
@@ -329,8 +434,8 @@ class HookHandler:
             Block response dictionary
         """
         return {
-            'decision': 'block',
-            'reason': reason
+            "decision": "block",
+            "reason": reason
         }
 
     @staticmethod
@@ -341,11 +446,11 @@ class HookHandler:
             Allow response dictionary
         """
         return {
-            'decision': "approve"
+            "decision": "approve"
         }
 
     @staticmethod
-    def is_stop_hook_active(context: Dict[str, Any]) -> bool:
+    def is_stop_hook_active(context: HookInput) -> bool:
         """Check if a stop hook is already active (for recursion prevention)
 
         Args:
@@ -354,4 +459,4 @@ class HookHandler:
         Returns:
             True if stop hook is already active
         """
-        return context.get('stop_hook_active', False)
+        return context.get("stop_hook_active", False)

@@ -8,3 +8,7 @@ __pycache__
 .venv
 logs
 test_project.claude/orchestra/
+.ruff_cache
+dist
+.coverage
+test_hook.txt

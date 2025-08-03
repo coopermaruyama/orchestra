@@ -4,11 +4,46 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Since this is an extension for Claude Code, important documentation references are included at:
 
-@docs/claude-docs/configuration-reference.md
-@docs/claude-docs/slash-commands-reference.md
-@docs/claude-docs/hooks-reference.md
-@docs/claude-docs/subagents-reference.md
-@docs/claude-docs/tool-reference.md
+## Important notes
+
+
+Do NOT rely on files being laid out in certain ways - code should be portable.
+
+This is BAD:
+
+```bash
+if [ "$1" = "hook" ]; then
+
+  # Determine which extension is being called based on which scripts exist
+  SCRIPT_DIR="$(dirname "$0")"
+  MONITOR_SCRIPT=""
+
+  # Check for task monitor
+  LOCAL_TASK="$SCRIPT_DIR/task/task_monitor.py"
+fi
+```
+
+
+This is better:
+
+```bash
+if [ "$1" = "hook" ]; then
+    # $HOME is reliable
+    LOCAL_TASK="$HOME/task/task_monitor.py"
+
+    # this is best - rely on installed program
+    if command -v orchestra &> /dev/null; then
+        orchestra task-monitor hook
+    else
+        echo "Orchestra CLI not found. Please install it:"
+        echo "pip install orchestra-cli"
+        exit 1
+    fi
+
+fi
+```
+
+@docs/claude-docs
 
 ## Project Overview
 

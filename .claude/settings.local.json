@@ -3,38 +3,18 @@
   "permissions": {
     "allow": [
       "Bash(git config:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(pip install:*)",
+      "Bash(uv run pytest:*)"
     ]
   },
   "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/orchestra/bootstrap.sh hook PreToolUse"
-          }
-        ]
-      }
-    ],
-    "PostToolUse": [
-      {
-        "matcher": "*",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/orchestra/bootstrap.sh hook PostToolUse"
-          }
-        ]
-      }
-    ],
     "Stop": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/orchestra/bootstrap.sh hook Stop"
+            "command": "python /Users/coopermaruyama/.claude/orchestra/task/task_monitor.py hook Stop"
           }
         ]
       }
@@ -44,17 +24,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$HOME/.claude/orchestra/bootstrap.sh hook SubagentStop"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$HOME/.claude/orchestra/bootstrap.sh hook UserPromptSubmit"
+            "command": "python /Users/coopermaruyama/.claude/orchestra/task/task_monitor.py hook SubagentStop"
           }
         ]
       }

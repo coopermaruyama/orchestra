@@ -302,9 +302,15 @@ class TimeMachineMonitor(GitAwareExtension):
         
         for i, checkpoint in enumerate(reversed(self.checkpoints)):
             turns_ago = i
-            timestamp = datetime.fromisoformat(checkpoint['timestamp'])
-            relative_time = self._format_relative_time(timestamp)
-            prompt_preview = checkpoint['prompt_preview']
+            
+            # Handle old checkpoints that might not have timestamp
+            if 'timestamp' in checkpoint:
+                timestamp = datetime.fromisoformat(checkpoint['timestamp'])
+                relative_time = self._format_relative_time(timestamp)
+            else:
+                relative_time = "unknown time"
+            
+            prompt_preview = checkpoint.get('prompt_preview', 'No preview available')
             
             if turns_ago == 0:
                 print(f"→ [latest] {relative_time} - {prompt_preview}")
@@ -351,11 +357,11 @@ class TimeMachineMonitor(GitAwareExtension):
                 
                 print(f"\n📋 Checkpoint Details: {checkpoint_id}")
                 print("=" * 80)
-                print(f"Timestamp: {metadata['timestamp']}")
+                print(f"Timestamp: {metadata.get('timestamp', 'N/A')}")
                 print(f"Session ID: {metadata.get('session_id', 'N/A')}")
                 print(f"\nUser Prompt:")
                 print("-" * 40)
-                print(metadata['user_prompt'])
+                print(metadata.get('user_prompt', 'No prompt recorded'))
                 print("-" * 40)
                 
                 if metadata.get('task_description'):

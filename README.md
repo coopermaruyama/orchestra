@@ -4,13 +4,31 @@
 
 ## Quick Start
 
+### One-liner Install
+
+```bash
+# Quick install (recommended)
+curl -sSL https://raw.githubusercontent.com/coopermaruyama/orchestra/main/get-orchestra.py | python3
+
+curl -sSL https://raw.githubusercontent.com/coopermaruyama/orchestra/main/install.sh | sh
+```
+
+### Manual Install
+
 ```bash
 # Clone and install Orchestra system-wide
-git clone git@github.com:coopermaruyama/orchestra.git
+git clone https://github.com/coopermaruyama/orchestra.git
 cd orchestra
 pip install --user .
+```
 
-# Enable extensions (globally by default)
+### Enable Extensions
+
+```bash
+# Enable all extensions at once
+orchestra enable
+
+# Or enable specific extensions
 orchestra enable task      # Task focus and tracking
 orchestra enable tidy      # Code quality checking
 

@@ -6,13 +6,10 @@ Automatic code quality checker that ensures code meets project standards.
 Integrates with Claude Code's Stop and SubagentStop hooks.
 """
 
-import json
-import sys
 import os
 import logging
-from typing import Dict, Optional, Any, List, Tuple
+from typing import Dict, Optional, Any, List
 from datetime import datetime
-from pathlib import Path
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
@@ -22,7 +19,7 @@ from rich.prompt import Prompt, Confirm
 from orchestra.common import BaseExtension, HookHandler
 
 # Import tidy-specific modules
-from .project_detector import ProjectDetector, ProjectType, ToolInfo
+from .project_detector import ProjectDetector
 from .tool_runners import ToolRunnerFactory, ParallelToolRunner, ToolResult
 
 
@@ -61,7 +58,7 @@ class TidyMonitor(BaseExtension):
         
         # Tidy-specific state
         self.project_info = None
-        self.detected_tools: Dict[str, ToolInfo] = {}
+        self.detected_tools: Dict[str, Dict[str, Any]] = {}
         self.custom_commands: List[Dict[str, str]] = []
         self.do_examples: List[str] = []
         self.dont_examples: List[str] = []
@@ -171,7 +168,7 @@ class TidyMonitor(BaseExtension):
         self.logger.info("Handling Stop hook")
         
         # Don't run if stop hook is already active (prevent recursion)
-        if HookHandler.is_stop_hook_active(context):
+        if context.get('stop_hook_active', False):
             self.logger.info("Stop hook already active, skipping")
             return HookHandler.create_allow_response()
         
@@ -243,15 +240,15 @@ class TidyMonitor(BaseExtension):
         """Check if file should be ignored based on patterns"""
         from fnmatch import fnmatch
         
-        for pattern in self.settings['ignore_patterns']:
+        for pattern in self.settings.get('ignore_patterns', []):
             if fnmatch(file_path, pattern):
                 return True
         
         return False
     
-    def _run_checks(self, files: List[str]) -> Dict[str, ToolResult]:
+    def _run_checks(self, files: Optional[List[str]] = None) -> Dict[str, ToolResult]:
         """Run all configured tools on specified files"""
-        self.logger.info(f"Running checks on {len(files)} files")
+        self.logger.info(f"Running checks on {len(files) if files else 'all'} files")
         
         # Create tool runners
         runners = []
@@ -322,8 +319,8 @@ class TidyMonitor(BaseExtension):
                 output_lines.append(f"\n📋 {tool_name}: {result.issues_count} issue(s)")
                 
                 # Show first N issues
-                max_issues = self.settings['max_issues_shown']
-                for i, issue in enumerate(result.issues[:max_issues]):
+                max_issues = self.settings.get('max_issues_shown', 10)
+                for issue in result.issues[:max_issues]:
                     if issue['file']:
                         location = f"{issue['file']}:{issue['line']}:{issue['column']}"
                     else:
@@ -338,7 +335,7 @@ class TidyMonitor(BaseExtension):
         output_lines.append("\n💡 Suggestions:")
         
         fixable_tools = [name for name, r in results.items() if r.can_fix and not r.success]
-        if fixable_tools and self.settings['auto_fix']:
+        if fixable_tools and self.settings.get('auto_fix', False):
             output_lines.append(f"  • Auto-fix is enabled. Run: orchestra tidy fix")
         elif fixable_tools:
             output_lines.append(f"  • {len(fixable_tools)} tool(s) can auto-fix issues")
@@ -395,8 +392,11 @@ class TidyMonitor(BaseExtension):
         self._auto_detect_project()
         
         # Show detected information
-        self.console.print(f"\n📁 Project Type: [cyan]{self.project_info['type']}[/cyan]")
-        self.console.print(f"📦 Package Manager: [cyan]{self.project_info['package_manager']}[/cyan]")
+        if self.project_info:
+            self.console.print(f"\n📁 Project Type: [cyan]{self.project_info['type']}[/cyan]")
+            self.console.print(f"📦 Package Manager: [cyan]{self.project_info['package_manager']}[/cyan]")
+        else:
+            self.console.print("\n⚠️  Could not detect project type")
         
         if self.detected_tools:
             self.console.print("\n🔧 Detected Tools:")
@@ -418,11 +418,13 @@ class TidyMonitor(BaseExtension):
                 command = Prompt.ask("Check command (e.g., 'npm run lint')")
                 fix_command = Prompt.ask("Fix command (optional, press Enter to skip)", default="")
                 
-                self.custom_commands.append({
+                custom_command: Dict[str, str] = {
                     'name': name,
-                    'command': command,
-                    'fix_command': fix_command if fix_command else None
-                })
+                    'command': command
+                }
+                if fix_command:
+                    custom_command['fix_command'] = fix_command
+                self.custom_commands.append(custom_command)
                 
                 if not Confirm.ask("Add another command?", default=False):
                     break
@@ -565,8 +567,12 @@ class TidyMonitor(BaseExtension):
         
         # Project info
         panel_content.append(f"[bold]Project Information:[/bold]")
-        panel_content.append(f"  Type: {self.project_info.get('type', 'Unknown')}")
-        panel_content.append(f"  Package Manager: {self.project_info.get('package_manager', 'Unknown')}")
+        if self.project_info:
+            panel_content.append(f"  Type: {self.project_info.get('type', 'Unknown')}")
+            panel_content.append(f"  Package Manager: {self.project_info.get('package_manager', 'Unknown')}")
+        else:
+            panel_content.append(f"  Type: Unknown")
+            panel_content.append(f"  Package Manager: Unknown")
         
         # Configured tools
         panel_content.append(f"\n[bold]Configured Tools:[/bold]")
@@ -582,9 +588,9 @@ class TidyMonitor(BaseExtension):
         
         # Settings
         panel_content.append(f"\n[bold]Settings:[/bold]")
-        panel_content.append(f"  Auto-fix: {'Yes' if self.settings['auto_fix'] else 'No'}")
-        panel_content.append(f"  Strict Mode: {'Yes' if self.settings['strict_mode'] else 'No'}")
-        panel_content.append(f"  Parallel Execution: {'Yes' if self.settings['parallel_execution'] else 'No'}")
+        panel_content.append(f"  Auto-fix: {'Yes' if self.settings.get('auto_fix', False) else 'No'}")
+        panel_content.append(f"  Strict Mode: {'Yes' if self.settings.get('strict_mode', True) else 'No'}")
+        panel_content.append(f"  Parallel Execution: {'Yes' if self.settings.get('parallel_execution', True) else 'No'}")
         
         # Last check
         if self.last_check:
@@ -635,7 +641,7 @@ class TidyMonitor(BaseExtension):
 
 
 # Main entry point for hook integration
-def main():
+def main() -> None:
     """Main entry point when called as a hook"""
     # Read hook input
     hook_input = HookHandler.read_hook_input()
