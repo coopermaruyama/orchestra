@@ -10,14 +10,16 @@ git clone git@github.com:coopermaruyama/orchestra.git
 cd orchestra
 pip install --user .
 
-# Enable task-monitor extension (globally by default)
-orchestra enable task-monitor
+# Enable extensions (globally by default)
+orchestra enable task      # Task focus and tracking
+orchestra enable tidy      # Code quality checking
 
 # Or enable to current project only
-orchestra enable task-monitor --project
+orchestra enable task --project
 
-# Use it in Claude Code
-/task start
+# Use in Claude Code
+/task start               # Start a new task
+/tidy init               # Configure code quality tools
 ```
 
 > Note: Extensions include a bootstrap script that allows team members to use commands even without Orchestra installed. They'll get friendly installation instructions on first use.
@@ -63,6 +65,24 @@ Automatic git checkpointing for every conversation turn. Travel back in time to 
 - Track tools used and files modified
 - Easy rollback to any previous state
 - Works alongside task monitor
+
+### tidy
+Automated code quality checker that ensures code meets project standards. Runs linters, formatters, and type checkers after Claude modifies files.
+
+**Commands:**
+- `/tidy:init` - Interactive setup wizard to configure tools
+- `/tidy:check` - Run code quality checks manually
+- `/tidy:fix` - Auto-fix issues where possible
+- `/tidy:status` - Show configuration and last results
+- `/tidy:learn` - Add do/don't examples for Claude
+
+**Features:**
+- Auto-detects project type and available tools
+- Runs checks automatically after code modifications
+- Supports Python, JavaScript/TypeScript, Rust, Go, and more
+- Parallel execution for performance
+- Learns project conventions over time
+- Zero-config setup with smart defaults
 
 ## Installation
 

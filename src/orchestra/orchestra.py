@@ -46,6 +46,18 @@ class Orchestra:
                     "Rollback to any previous state",
                     "Track file modifications per turn"
                 ]
+            },
+            "tidy": {
+                "name": "Tidy",
+                "description": "Automated code quality checker that ensures code meets project standards. Runs linters, formatters, and type checkers after Claude modifies files.",
+                "commands": ["tidy init", "tidy check", "tidy fix", "tidy status", "tidy learn"],
+                "features": [
+                    "Auto-detects project type and tools",
+                    "Runs checks after code modifications",
+                    "Parallel execution for performance",
+                    "Learns project conventions over time",
+                    "Supports Python, JS/TS, Rust, and more"
+                ]
             }
         }
 
@@ -156,8 +168,12 @@ if [ "$1" = "hook" ]; then
     # Check for timemachine monitor
     LOCAL_TM="$SCRIPT_DIR/timemachine/timemachine_monitor.py"
     GLOBAL_TM="$HOME/.claude/orchestra/timemachine/timemachine_monitor.py"
+    
+    # Check for tidy monitor
+    LOCAL_TIDY="$SCRIPT_DIR/tidy/tidy_monitor.py"
+    GLOBAL_TIDY="$HOME/.claude/orchestra/tidy/tidy_monitor.py"
 
-    # Priority: local task, global task, local timemachine, global timemachine
+    # Priority: local task, global task, local timemachine, global timemachine, local tidy, global tidy
     if [ -f "$LOCAL_TASK" ]; then
         MONITOR_SCRIPT="$LOCAL_TASK"
     elif [ -f "$GLOBAL_TASK" ]; then
@@ -166,6 +182,10 @@ if [ "$1" = "hook" ]; then
         MONITOR_SCRIPT="$LOCAL_TM"
     elif [ -f "$GLOBAL_TM" ]; then
         MONITOR_SCRIPT="$GLOBAL_TM"
+    elif [ -f "$LOCAL_TIDY" ]; then
+        MONITOR_SCRIPT="$LOCAL_TIDY"
+    elif [ -f "$GLOBAL_TIDY" ]; then
+        MONITOR_SCRIPT="$GLOBAL_TIDY"
     else
         echo "Error: No monitor script found" >&2
         exit 1
@@ -196,6 +216,9 @@ exec orchestra "$@"
         elif extension == "timemachine":
             monitor_source = Path(__file__).parent / "extensions" / "timemachine" / "timemachine_monitor.py"
             monitor_dest = scripts_dir / "timemachine_monitor.py"
+        elif extension == "tidy":
+            monitor_source = Path(__file__).parent / "extensions" / "tidy" / "tidy_monitor.py"
+            monitor_dest = scripts_dir / "tidy_monitor.py"
         else:
             self.console.print(f"[bold red]⚠️ Warning:[/bold red] No monitor script configured for {extension}")
             return
@@ -207,6 +230,18 @@ exec orchestra "$@"
         else:
             self.console.print(f"[bold red]⚠️ Warning:[/bold red] {monitor_source.name} not found at {monitor_source}")
             return
+            
+        # For tidy extension, copy additional modules it depends on
+        if extension == "tidy":
+            tidy_modules = ["project_detector.py", "tool_runners.py"]
+            for module in tidy_modules:
+                module_source = Path(__file__).parent / "extensions" / "tidy" / module
+                module_dest = scripts_dir / module
+                if module_source.exists():
+                    shutil.copy(module_source, module_dest)
+                    module_dest.chmod(0o644)
+                else:
+                    self.console.print(f"[bold red]⚠️ Warning:[/bold red] {module} not found for tidy extension")
 
         # Copy orchestra.common library for dependencies
         common_source = Path(__file__).parent / "common"
@@ -332,6 +367,48 @@ description: {cmd_info['description']}
 
                 with open(tm_dir / f"{cmd_name}.md", 'w') as f:
                     f.write(cmd_content)
+                    
+        elif extension == "tidy":
+            # Create the tidy directory for sub-commands
+            tidy_dir = commands_dir / "tidy"
+            tidy_dir.mkdir(parents=True, exist_ok=True)
+
+            commands = {
+                "init": {
+                    "description": "Interactive setup wizard to configure code quality tools",
+                    "script": f"!sh {bootstrap_path} tidy init"
+                },
+                "check": {
+                    "description": "Run code quality checks on all or specified files",
+                    "script": f"!sh {bootstrap_path} tidy check $ARGUMENTS"
+                },
+                "fix": {
+                    "description": "Auto-fix code quality issues where possible",
+                    "script": f"!sh {bootstrap_path} tidy fix $ARGUMENTS"
+                },
+                "status": {
+                    "description": "Show current configuration and last check results",
+                    "script": f"!sh {bootstrap_path} tidy status"
+                },
+                "learn": {
+                    "description": "Add do/don't examples to help Claude learn project conventions",
+                    "script": f"!sh {bootstrap_path} tidy learn $ARGUMENTS"
+                }
+            }
+
+            # Write individual command files
+            for cmd_name, cmd_info in commands.items():
+                cmd_content = f"""---
+allowed-tools: Bash(*)
+description: {cmd_info['description']}
+---
+
+{cmd_info['script']}
+
+<!-- AUTO-GENERATED BY ORCHESTRA: {extension} -->"""
+
+                with open(tidy_dir / f"{cmd_name}.md", 'w') as f:
+                    f.write(cmd_content)
 
         # Create hooks configuration for Claude Code settings format
         # Both extensions use the same hooks - the bootstrap script determines which one runs
@@ -410,6 +487,16 @@ description: {cmd_info['description']}
                             }
                         ]
                     }
+                ],
+                "PreCompact": [
+                    {
+                        "hooks": [
+                            {
+                                "type": "command",
+                                "command": f"sh {bootstrap_path} hook PreCompact"
+                            }
+                        ]
+                    }
                 ]
             }
         }
@@ -445,6 +532,11 @@ description: {cmd_info['description']}
         elif extension == "timemachine":
             self.console.print(f"   [dim]-[/dim] {commands_dir / 'timemachine'}/*.md (sub-commands)")
             start_cmd = "/timemachine list"
+        elif extension == "tidy":
+            self.console.print(f"   [dim]-[/dim] {commands_dir / 'tidy'}/*.md (sub-commands)")
+            start_cmd = "/tidy init"
+        else:
+            start_cmd = f"/{extension}"
 
         self.console.print(f"[bold]🚀 Bootstrap:[/bold] {scripts_dir.parent / 'bootstrap.sh'}")
         self.console.print(f"[bold]🪝 Hooks:[/bold] Configured in {settings_file}")
@@ -453,8 +545,8 @@ description: {cmd_info['description']}
 
     def _install_subagents(self, extension: str, scope: str) -> None:
         """Install subagents for an extension"""
-        if extension != "task":
-            return  # Only task currently uses subagents
+        if extension not in ["task", "tidy"]:
+            return  # Only task and tidy currently use subagents
 
         # Determine agents directory
         if scope == "global":
@@ -465,7 +557,7 @@ description: {cmd_info['description']}
         agents_dir.mkdir(parents=True, exist_ok=True)
 
         # Copy subagent templates
-        source_agents_dir = Path(__file__).parent / "extensions" / "task" / "agents"
+        source_agents_dir = Path(__file__).parent / "extensions" / extension / "agents"
         if source_agents_dir.exists():
             agent_count = 0
             for agent_file in source_agents_dir.glob("*.md"):
@@ -474,7 +566,10 @@ description: {cmd_info['description']}
                 agent_count += 1
 
             if agent_count > 0:
-                self.console.print(f"[bold green]🤖 Installed {agent_count} subagents[/bold green] for intelligent deviation detection")
+                if extension == "task":
+                    self.console.print(f"[bold green]🤖 Installed {agent_count} subagents[/bold green] for intelligent deviation detection")
+                elif extension == "tidy":
+                    self.console.print(f"[bold green]🤖 Installed {agent_count} subagents[/bold green] for code quality analysis")
 
     def list_extensions(self) -> None:
         """List enabled extensions"""
@@ -570,22 +665,52 @@ description: {cmd_info['description']}
                 # Remove the timemachine directory if it's empty
                 if removed_count > 0 and not any(tm_dir.iterdir()):
                     tm_dir.rmdir()
+                    
+        elif extension == "tidy":
+            # Remove tidy sub-commands
+            tidy_dir = commands_dir / "tidy"
+            if tidy_dir.exists() and tidy_dir.is_dir():
+                removed_count = 0
+                for cmd_file in tidy_dir.glob("*.md"):
+                    if is_orchestra_generated(cmd_file, extension):
+                        cmd_file.unlink()
+                        removed_count += 1
+                        removed = True
+
+                # Remove the tidy directory if it's empty
+                if removed_count > 0 and not any(tidy_dir.iterdir()):
+                    tidy_dir.rmdir()
 
         # Remove subagents if they were generated by Orchestra
-        if agents_dir.exists() and extension == "task":
-            agent_files = ["off-topic-detector.md", "over-engineering-detector.md", "scope-creep-detector.md"]
-            for agent_file in agent_files:
-                agent_path = agents_dir / agent_file
-                if agent_path.exists():
-                    try:
-                        with open(agent_path, 'r') as f:
-                            # Check if it's our agent by looking for specific content
-                            content = f.read()
-                            if "Orchestra Task Monitor" in content or "scope creep" in content:
-                                agent_path.unlink()
-                                removed = True
-                    except Exception:
-                        pass
+        if agents_dir.exists():
+            if extension == "task":
+                agent_files = ["off-topic-detector.md", "over-engineering-detector.md", "scope-creep-detector.md"]
+                for agent_file in agent_files:
+                    agent_path = agents_dir / agent_file
+                    if agent_path.exists():
+                        try:
+                            with open(agent_path, 'r') as f:
+                                # Check if it's our agent by looking for specific content
+                                content = f.read()
+                                if "Orchestra Task Monitor" in content or "scope creep" in content:
+                                    agent_path.unlink()
+                                    removed = True
+                        except Exception:
+                            pass
+            elif extension == "tidy":
+                agent_files = ["code-quality-analyzer.md", "fix-suggester.md"]
+                for agent_file in agent_files:
+                    agent_path = agents_dir / agent_file
+                    if agent_path.exists():
+                        try:
+                            with open(agent_path, 'r') as f:
+                                # Check if it's our agent by looking for specific content
+                                content = f.read()
+                                if "code quality analyzer" in content or "fix suggestion specialist" in content:
+                                    agent_path.unlink()
+                                    removed = True
+                        except Exception:
+                            pass
 
         # Remove scripts directory (always safe to remove as it's only for Orchestra)
         if scripts_dir.exists():
