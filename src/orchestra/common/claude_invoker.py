@@ -257,8 +257,8 @@ REASONING: [Brief explanation]
             # Add prompt
             cmd.extend(["-p", prompt])
 
-            # Execute
-            result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=120)
+            # Execute with longer timeout for complex queries
+            result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=300)  # 5 minutes
 
             if result.returncode == 0:
                 return {

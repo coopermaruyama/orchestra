@@ -49,14 +49,32 @@ class GitTaskManager:
     def _get_git_wip_path(self) -> str:
         """Get path to git-wip script"""
         # Try to find git-wip in same directory as this module
-        current_dir = Path(__file__).parent
+        current_dir = Path(__file__).parent.absolute()
         git_wip_path = current_dir / "git-wip"
 
         if git_wip_path.exists():
-            return str(git_wip_path)
+            # Make sure it's executable
+            import stat
+            import os
+            if not os.access(str(git_wip_path), os.X_OK):
+                # Try to make it executable
+                try:
+                    git_wip_path.chmod(git_wip_path.stat().st_mode | stat.S_IEXEC)
+                except Exception:
+                    pass
+            return str(git_wip_path.absolute())
 
         # Fallback: assume git-wip is in PATH
-        return "git-wip"
+        import shutil
+        if shutil.which("git-wip"):
+            return "git-wip"
+        
+        # If still not found, raise a more helpful error
+        raise FileNotFoundError(
+            f"git-wip not found. Expected at: {git_wip_path}\n"
+            f"Current directory: {current_dir}\n"
+            f"Module file: {__file__}"
+        )
 
     def _get_current_branch(self) -> str:
         """Get current git branch name"""

@@ -2,6 +2,113 @@
 
 > Orchestrate your Claude Code workflow with focused extensions
 
+A collection of custom subagents, hooks, and slash commands designed to enhance your Claude Code experience.
+
+It also includes utilities to help you work with claude in a "controlled" way, where your workflow involves prompt engineering rather than fixing claude's mistakes.
+
+Currently includes:
+- **🎯 Task Monitor**: Keep Claude focused on your task requirements. No scope creep, no over-engineering.
+- **🕰️ TimeMachine**: Automatic git checkpointing for every conversation turn. Travel back in time to any previous state.
+- **🧹 Tidy**: Automated code quality checker that ensures code meets project standards. Runs linters, formatters, and type checkers in parallel while Claude modifies files
+- **🧪 Tester**: Implements a calibration process to make sure claude knows exactly how tests should be run, what frameworks are used, and how to write new tests.
+
+
+## Orchestra in Action
+
+### Task Monitor: Preventing Scope Creep
+
+```
+🔹 Human: Can you help me fix the login bug where users get a 500 error?
+
+[Claude starts writing unrelated code e.g. OAuth integration]
+
+⚠️ Orchestra Task Monitor: SCOPE CREEP DETECTED
+This request deviates from your current task: "Fix login 500 error bug"
+Adding OAuth is a significant feature addition, not a bug fix.
+
+Options:
+1. Continue with original bug fix only
+2. Create a new task for OAuth refactoring after this bug is fixed
+3. Override and expand current task scope
+
+🤖 Claude: The task monitor is right - let's focus on fixing the 500 error first. Once that's resolved, we can create a separate task for OAuth implementation.
+```
+
+### Tidy: Async Quality Checks
+
+```
+🔹 Human: Please add a helper function to calculate user statistics
+
+🤖 Claude: I'll add a helper function for calculating user statistics.
+
+[Claude writes the function]
+
+🧹 Orchestra Tidy: Code quality check triggered
+Running: ruff check, mypy, black --check
+
+Issues found:
+- src/utils/stats.py:15: Missing return type annotation
+- src/utils/stats.py:23: Line too long (95 > 88 characters)
+- src/utils/stats.py:30: Undefined variable 'total_users'
+
+🤖 Claude: Let me fix those issues before continuing...
+
+[Claude fixes the issues]
+
+✅ Orchestra Tidy: All checks passed!
+```
+
+### TimeMachine: Easy Rollback When Things Go Wrong
+
+```
+🔹 Human: Update the database schema to add user preferences
+
+🤖 Claude: I'll update the database schema to add user preferences.
+
+[Claude makes several changes to models and migrations]
+
+🔹 Human: Actually, this is breaking our tests. Can we go back?
+
+🤖 Claude: I'll use TimeMachine to rollback to before the schema changes.
+
+🕐 Orchestra TimeMachine: Available checkpoints:
+1. "Update database schema to add user preferences" (3 minutes ago)
+2. "Fix login 500 error bug" (15 minutes ago)
+3. "Add input validation to user form" (22 minutes ago)
+
+Rolling back to checkpoint 2...
+
+✅ Restored to: "Fix login 500 error bug"
+- Reverted 5 file changes
+- Current branch: main
+- All changes have been undone
+```
+
+### Preventing Over-Engineering
+
+```
+🔹 Human: I need to add a simple contact form to the website
+
+🤖 Claude: I'll help you add a contact form. Let me start by creating a form component.
+
+[Claude starts writing code with Redux, custom hooks, and complex state management]
+
+🛑 Orchestra Task Monitor: OVER-ENGINEERING DETECTED
+You're implementing:
+- Redux store for a simple form
+- Custom validation framework
+- Abstract form builder pattern
+
+For a basic contact form, consider:
+- Simple React component with useState
+- Basic HTML5 validation
+- Direct API call on submit
+
+🤖 Claude: You're right, I was over-complicating this. Let me create a simple, straightforward contact form instead.
+```
+
+Each extension is implemented via claude hooks which allows us to run python scripts inside of a session and implement advanced functionality. All extensions can be used standalone, for example `orchestra timemachine rollback 2` to go back to the state 2 turns ago.
+
 ## Quick Start
 
 ### One-liner Install
@@ -226,6 +333,7 @@ You can run task commands directly from the command line without entering Claude
 # Get a quick focus reminder
 ./orchestra.py task focus
 ```
+
 
 ## Team Collaboration
 

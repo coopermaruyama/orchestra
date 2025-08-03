@@ -84,10 +84,25 @@ class TimeMachineMonitor(GitAwareExtension):
         self.files_modified_this_turn: List[str] = []
         
         self.load_config()
+        
+        # Check if git-wip is available on initialization
+        self._check_git_wip_availability()
 
     def get_default_config_filename(self) -> str:
         """Get the default configuration file name for this extension"""
         return 'timemachine.json'
+    
+    def _check_git_wip_availability(self) -> None:
+        """Check if git-wip is available and log a warning if not"""
+        try:
+            git_wip_path = self.git_manager._get_git_wip_path()
+            self.logger.debug(f"git-wip found at: {git_wip_path}")
+        except FileNotFoundError as e:
+            self.logger.error("git-wip not found. TimeMachine requires git-wip for creating checkpoints.")
+            self.logger.error(str(e))
+            self.logger.info("Please ensure Orchestra is properly installed with all dependencies.")
+        except Exception as e:
+            self.logger.error(f"Error checking git-wip availability: {e}")
 
     def load_config(self) -> Dict[str, Any]:
         """Load or create configuration"""
@@ -224,8 +239,10 @@ class TimeMachineMonitor(GitAwareExtension):
         commit_message = f"TimeMachine: {self.current_prompt[:50]}...\n\n{json.dumps(metadata, indent=2)}"
         
         try:
-            # Use git-wip to create checkpoint
+            # Get git-wip path (will raise FileNotFoundError if not found)
             git_wip_path = self.git_manager._get_git_wip_path()
+            
+            # Create the checkpoint
             result = self.git_manager._run_git_wip_command([
                 git_wip_path, 'save', commit_message, '--untracked'
             ])
@@ -246,8 +263,17 @@ class TimeMachineMonitor(GitAwareExtension):
                 
                 return checkpoint['id']
                 
+        except FileNotFoundError as e:
+            self.logger.error(f"Cannot create checkpoint: {e}")
+            return None
+        except subprocess.CalledProcessError as e:
+            # Check if it's just "no changes" error
+            if e.returncode == 1 and "no changes" in e.stderr:
+                self.logger.debug("No changes since last checkpoint")
+            else:
+                self.logger.error(f"git-wip command failed: {e}")
         except Exception as e:
-            self.logger.error(f"Failed to create WIP commit: {e}")
+            self.logger.error(f"Failed to create checkpoint: {e}")
             
         return None
 

@@ -3,7 +3,7 @@
   "current_session": "",
   "checkpoints": [
     {
-      "id": "test-1",
+      "id": "`test-1`",
       "prompt_preview": "Test prompt"
     }
   ],
