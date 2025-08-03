@@ -3,8 +3,20 @@
   "requirements": [
     {
       "id": "1",
-      "description": "Make 'orchestra enable' with no arguments enable all extensions",
+      "description": "Add status() method to Orchestra class to check extension states",
       "priority": 1,
+      "completed": true
+    },
+    {
+      "id": "2",
+      "description": "Update main() function to handle 'orchestra status' command",
+      "priority": 1,
+      "completed": true
+    },
+    {
+      "id": "3",
+      "description": "Test the status command with various extension configurations",
+      "priority": 2,
       "completed": true
     }
   ],
@@ -16,5 +28,5 @@
     "deviations": 0,
     "commands": 0
   },
-  "updated": "2025-08-02T14:01:20.018730"
+  "updated": "2025-08-03T04:08:46.831150"
 }

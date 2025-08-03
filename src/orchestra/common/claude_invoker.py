@@ -20,12 +20,12 @@ class ClaudeInvoker:
     MODELS = {
         "default": None,  # Use Claude's default
         "fast": "claude-3-haiku-20240307",  # Fast, cost-effective for simple tasks
-        "balanced": "claude-3-5-sonnet-20241022",  # Good balance of speed/quality
-        "powerful": "claude-3-5-sonnet-20241022",  # High quality responses
+        "balanced": "sonnet",  # Good balance of speed/quality
+        "powerful": "opus",  # High quality responses
         "small": "claude-3-haiku-20240307",  # Alias for fast
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """Initialize Claude invoker"""
         self.is_claude_code = os.environ.get("CLAUDECODE") == "1"
 

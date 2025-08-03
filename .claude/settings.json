@@ -1,3 +1,14 @@
 {
-  "hooks": {}
+  "hooks": {
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "sh .claude/orchestra/bootstrap.sh hook PreCompact"
+          }
+        ]
+      }
+    ]
+  }
 }

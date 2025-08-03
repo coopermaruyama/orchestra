@@ -661,6 +661,138 @@ description: {cmd_info['description']}
             if not local_installed and not global_installed:
                 self.console.print(f"  [dim]•[/dim] {ext_id} : [italic]{ext_info['description'][:60]}...[/italic]")
 
+    def status(self) -> None:
+        """Show detailed status of all extensions"""
+        self.console.print("[bold blue]🎼 Orchestra Extension Status[/bold blue]\n")
+
+        # Create status table
+        table = Table(show_header=True, header_style="bold magenta")
+        table.add_column("Extension", style="cyan", width=16)
+        table.add_column("State", style="yellow", width=15)
+        table.add_column("Details", style="dim", width=50)
+
+        # Check each extension
+        for ext_id, ext_info in self.extensions.items():
+            # Check installation scope
+            local_installed = False
+            global_installed = False
+
+            if ext_id == "task":
+                local_installed = (self.local_dir / "task").exists()
+                global_installed = (self.global_dir / "task").exists()
+            else:
+                local_installed = (self.local_dir / ext_id).exists()
+                global_installed = (self.global_dir / ext_id).exists()
+
+            if not local_installed and not global_installed:
+                table.add_row(
+                    ext_info['name'],
+                    "Disabled",
+                    f"Run 'orchestra enable {ext_id}' to install"
+                )
+                continue
+
+            # Check configuration and state
+            state = "Uninitialized"
+            details = ""
+
+            # Check local config first (takes precedence)
+            config_checked = False
+            config_path = Path(".claude") / "orchestra"  # Default to avoid type errors
+            if local_installed:
+                config_path = Path(".claude") / "orchestra"
+                config_checked = True
+            elif global_installed:
+                config_path = self.home / ".claude" / "orchestra"
+                config_checked = True
+
+            if config_checked:
+                if ext_id == "task":
+                    task_config = config_path / "task.json"
+                    if task_config.exists():
+                        try:
+                            with open(task_config) as f:
+                                config = json.load(f)
+                                if config.get('task') and config.get('requirements'):
+                                    state = "Ready"
+                                    completed = sum(1 for req in config['requirements'] if req.get('completed', False))
+                                    total = len(config['requirements'])
+                                    details = f"Task: {config['task'][:30]}... ({completed}/{total} done)"
+                                else:
+                                    state = "Uninitialized"
+                                    details = "Run '/task start' to begin a task"
+                        except Exception:
+                            details = "Error reading config"
+                    else:
+                        state = "Uninitialized"
+                        details = "Run '/task start' to begin a task"
+
+                elif ext_id == "timemachine":
+                    tm_config = config_path / "timemachine.json"
+                    if tm_config.exists():
+                        try:
+                            with open(tm_config) as f:
+                                config = json.load(f)
+                                checkpoints = config.get('checkpoints', [])
+                                state = "Ready"
+                                if checkpoints:
+                                    details = f"{len(checkpoints)} checkpoint(s) saved"
+                                else:
+                                    details = "No checkpoints yet"
+                        except Exception:
+                            details = "Error reading config"
+                    else:
+                        state = "Ready"
+                        details = "Will create checkpoints automatically"
+
+                elif ext_id == "tidy":
+                    tidy_config = config_path / "tidy.json"
+                    if tidy_config.exists():
+                        try:
+                            with open(tidy_config) as f:
+                                config = json.load(f)
+                                if config.get('project_type') and config.get('tools'):
+                                    state = "Ready"
+                                    tools = ', '.join(config['tools'].keys())
+                                    details = f"{config['project_type']} project: {tools}"
+                                else:
+                                    state = "Uninitialized"
+                                    details = "Run '/tidy init' to configure"
+                        except Exception:
+                            details = "Error reading config"
+                    else:
+                        state = "Uninitialized"
+                        details = "Run '/tidy init' to configure"
+
+                elif ext_id == "tester":
+                    tester_config = config_path / "tester.json"
+                    if tester_config.exists():
+                        try:
+                            with open(tester_config) as f:
+                                config = json.load(f)
+                                calibration = config.get('calibration', {})
+                                if calibration.get('calibrated_at'):
+                                    state = "Ready"
+                                    framework = calibration.get('framework', 'Unknown')
+                                    test_count = len(config.get('test_results', []))
+                                    details = f"{framework} framework, {test_count} test run(s)"
+                                else:
+                                    state = "Uninitialized"
+                                    details = "Run '/tester calibrate' to set up"
+                        except Exception:
+                            details = "Error reading config"
+                    else:
+                        state = "Uninitialized"
+                        details = "Run '/tester calibrate' to set up"
+
+            table.add_row(
+                ext_info['name'],
+                state,
+                details
+            )
+
+        self.console.print(table)
+
     def disable(self, extension: str, scope: str = "global") -> None:
         """Disable an extension"""
         if scope == "global":
@@ -862,6 +994,7 @@ def main() -> None:
         commands_table.add_row("enable [extension] [--project]", "Enable an extension or all if none specified")
         commands_table.add_row("disable <extension> [--project]", "Disable an extension (default: global)")
         commands_table.add_row("list", "List enabled extensions")
+        commands_table.add_row("status", "Show detailed status of all extensions")
         commands_table.add_row("logs [extension] [options]", "View or manage extension logs")
         commands_table.add_row("task <subcommand>", "Run task monitor commands")
         commands_table.add_row("timemachine <subcommand>", "Run timemachine commands")
@@ -924,6 +1057,7 @@ def main() -> None:
         console.print("  [dim]$[/dim] orchestra enable           # Enable all extensions")
         console.print("  [dim]$[/dim] orchestra enable task      # Enable specific extension")
         console.print("  [dim]$[/dim] orchestra enable task --project")
+        console.print("  [dim]$[/dim] orchestra status           # Check extension states")
         console.print("  [dim]$[/dim] orchestra task start")
         console.print("  [dim]$[/dim] orchestra task status\n")
         return
@@ -967,6 +1101,9 @@ def main() -> None:
 
     elif command == "list":
         orchestra.list_extensions()
+
+    elif command == "status":
+        orchestra.status()
 
     elif command == "task":
         # Direct task command execution

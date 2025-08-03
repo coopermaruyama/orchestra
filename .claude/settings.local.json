@@ -7,27 +7,5 @@
       "Bash(pip install:*)",
       "Bash(uv run pytest:*)"
     ]
-  },
-  "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python /Users/coopermaruyama/.claude/orchestra/task/task_monitor.py hook Stop"
-          }
-        ]
-      }
-    ],
-    "SubagentStop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "python /Users/coopermaruyama/.claude/orchestra/task/task_monitor.py hook SubagentStop"
-          }
-        ]
-      }
-    ]
   }
 }
