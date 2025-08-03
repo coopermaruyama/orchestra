@@ -3,21 +3,45 @@
   "requirements": [
     {
       "id": "1",
-      "description": "Examine the current orchestra structure",
+      "description": "Review existing tests to identify which use mocks vs E2E",
       "priority": 1,
-      "completed": false
+      "completed": true
     },
     {
       "id": "2",
-      "description": "Examine bootstrap.sh",
+      "description": "Create comprehensive E2E test suite for Claude CLI",
       "priority": 1,
-      "completed": false
+      "completed": true
+    },
+    {
+      "id": "6",
+      "description": "Run E2E tests to verify they work",
+      "priority": 1,
+      "completed": true
+    },
+    {
+      "id": "7",
+      "description": "Run full E2E test suite",
+      "priority": 1,
+      "completed": true
     },
     {
       "id": "3",
-      "description": "Run full E2E test suite",
-      "priority": 1,
-      "completed": false
+      "description": "Add E2E tests for different output formats",
+      "priority": 2,
+      "completed": true
+    },
+    {
+      "id": "4",
+      "description": "Add E2E tests for error scenarios",
+      "priority": 2,
+      "completed": true
+    },
+    {
+      "id": "5",
+      "description": "Add E2E tests for streaming functionality",
+      "priority": 2,
+      "completed": true
     }
   ],
   "settings": {
@@ -28,5 +52,5 @@
     "deviations": 0,
     "commands": 0
   },
-  "updated": "2025-08-03T05:51:25.402661"
+  "updated": "2025-08-03T05:58:29.325900"
 }
