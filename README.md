@@ -84,6 +84,26 @@ Rolling back to checkpoint 2...
 - All changes have been undone
 ```
 
+### Tester: Calibrated Test Runner
+
+```
+🔹 Human: /tester:calibrate
+
+🤖 Claude: Let's calibrate the test runner to understand your project's testing setup.
+I'll ask you a few questions to learn about your test framework and patterns.
+
+1. What testing framework are you using? (e.g. pytest, unittest)
+2. How are your tests organized? (e.g. by feature, by type)
+3. Do you have any specific testing patterns or practices you follow? (e.g. AAA, BDD)
+4. Are there any browser tests that need to be automated?
+
+🔹 Human: [Answers to questions]
+
+🤖 Claude: Great! I've learned the following about your testing setup:
+```
+
+Tester will then save this configuration in `.claude/orchestra/tester/calibration.json` and use it to run tests automatically in future interactions.
+
 ### Preventing Over-Engineering
 
 ```

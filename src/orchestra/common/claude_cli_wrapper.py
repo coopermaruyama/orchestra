@@ -140,7 +140,8 @@ class ClaudeCLIWrapper:
         cmd.extend(["--output-format", output_format.value])
 
         # Add verbose flag
-        if verbose:
+        # Note: stream-json format requires --verbose
+        if verbose or output_format == OutputFormat.STREAM_JSON:
             cmd.append("--verbose")
 
         # Add model if specified
@@ -273,12 +274,22 @@ class ClaudeCLIWrapper:
         elif output_format == OutputFormat.JSON:
             try:
                 data = json.loads(output.strip())
+                
+                # Extract content from different possible locations
+                content = data.get("content") or data.get("result")
+                
+                # Extract model info
+                model = data.get("model")
+                
+                # Extract usage info
+                usage = data.get("usage")
+                
                 return ClaudeResponse(
                     success=True,
-                    content=data.get("content"),
+                    content=content,
                     messages=[data] if "type" in data else None,
-                    model=data.get("model"),
-                    usage=data.get("usage"),
+                    model=model,
+                    usage=usage,
                     duration_ms=duration_ms,
                 )
             except json.JSONDecodeError:
