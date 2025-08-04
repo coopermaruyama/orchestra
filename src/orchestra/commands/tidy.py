@@ -78,8 +78,3 @@ def learn(type, example):
     run_tidy_command("learn", type, example)
 
 
-@tidy.command()
-@click.argument("action", type=click.Choice(["start", "stop", "status"]))
-def sidecar(action):
-    """Manage background fix daemon"""
-    run_tidy_command("sidecar", action)

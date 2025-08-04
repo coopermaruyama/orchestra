@@ -6,6 +6,7 @@ Since this is an extension for Claude Code, important documentation references a
 
 ## Important notes
 
+- The format for executing slash commands in Claude is `/namespace:subcommand` not `/namespace subcommand`. For example, `/task status` is invalid, whereas `/task:status` is correct.
 
 Do NOT rely on files being laid out in certain ways - code should be portable.
 

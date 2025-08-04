@@ -16,7 +16,7 @@ class Orchestra:
     """Orchestra extension manager using template-based configuration"""
 
     def __init__(self) -> None:
-        self.__version__ = "0.7.0"
+        self.__version__ = "0.8.0"
         self.home = Path.home()
         self.global_dir = self.home / ".claude" / "commands"
         self.local_dir = Path(".claude") / "commands"

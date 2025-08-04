@@ -47,6 +47,11 @@ class TidyMonitor(BaseExtension):
     """Simplified Tidy extension using IDE diagnostics"""
 
     def __init__(self, config_path: Optional[str] = None) -> None:
+        # Check for recursive Orchestra Claude invocation
+        if os.environ.get("ORCHESTRA_CLAUDE_INVOCATION"):
+            # We're being called from within an Orchestra Claude invocation
+            # Exit silently to prevent recursive loops
+            sys.exit(0)
         # Use CLAUDE_WORKING_DIR if available
         working_dir = os.environ.get("CLAUDE_WORKING_DIR", ".")
 

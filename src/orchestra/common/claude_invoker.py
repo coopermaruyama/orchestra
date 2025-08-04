@@ -10,6 +10,7 @@ import json
 import os
 import re
 import subprocess
+import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Union
 
@@ -71,17 +72,41 @@ class ClaudeInvoker:
                 include_git_diff=include_git_diff,
             )
 
+            # Create temporary settings file with hooks disabled
+            temp_settings = {
+                "hooks": {
+                    "pre_command": [],
+                    "post_command": [],
+                    "prompt": [],
+                    "file_change": []
+                }
+            }
+            
+            # Write to temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+                json.dump(temp_settings, f)
+                temp_settings_path = f.name
+            
             # Configure options
             options = ClaudeCodeOptions()
             if model:
                 options.model = model
             if system_prompt:
                 options.system_prompt = system_prompt
-
-            # Use the ClaudeSDKClient for better control
-            import asyncio
             
-            async def run_query():
+            # Override settings to disable all hooks for external Claude instances
+            # This prevents the external Claude from also having tidy extensions applied
+            options.settings = temp_settings_path
+
+            # Set environment variable to prevent recursive calls
+            original_env = os.environ.get("ORCHESTRA_CLAUDE_INVOCATION")
+            os.environ["ORCHESTRA_CLAUDE_INVOCATION"] = "1"
+            
+            try:
+                # Use the ClaudeSDKClient for better control
+                import asyncio
+                
+                async def run_query():
                 response_text = ""
                 messages = []
                 cost_info = {}
@@ -113,17 +138,30 @@ class ClaudeInvoker:
                     "cost_info": cost_info,
                 }
 
-            # Try to run in new loop
-            try:
-                return asyncio.run(run_query())
-            except RuntimeError as e:
-                if "cannot be called from a running event loop" in str(e):
-                    # We're in an async context, run in thread
-                    with ThreadPoolExecutor() as executor:
-                        future = executor.submit(lambda: asyncio.run(run_query()))
-                        return future.result()
+                # Try to run in new loop
+                try:
+                    return asyncio.run(run_query())
+                except RuntimeError as e:
+                    if "cannot be called from a running event loop" in str(e):
+                        # We're in an async context, run in thread
+                        with ThreadPoolExecutor() as executor:
+                            future = executor.submit(lambda: asyncio.run(run_query()))
+                            return future.result()
+                    else:
+                        raise
+            
+            finally:
+                # Clean up environment variable
+                if original_env is None:
+                    os.environ.pop("ORCHESTRA_CLAUDE_INVOCATION", None)
                 else:
-                    raise
+                    os.environ["ORCHESTRA_CLAUDE_INVOCATION"] = original_env
+                
+                # Clean up temporary settings file
+                try:
+                    os.unlink(temp_settings_path)
+                except OSError:
+                    pass
 
         except Exception as e:
             import traceback
