@@ -1,3 +1,4 @@
+# ruff: noqa: SLF001
 """
 End-to-end tests for TaskCheckCommand
 

@@ -1,3 +1,4 @@
+# ruff: noqa: SLF001
 """
 Unit tests for TidyFixCommand
 
@@ -282,7 +283,7 @@ x=1"""
     print('hi')
 x = 1"""
 
-        changes = command._detect_changes(original, fixed)
+        changes = command._detect_changes(original, fixed)  # noqa: SLF001
 
         assert len(changes) >= 2
         # Should detect spacing and indentation changes
@@ -393,17 +394,17 @@ x = 1"""
         command = TidyFixCommand()
 
         # Test Python file
-        file_type = command._infer_file_type("/path/to/script.py")
+        file_type = command._infer_file_type("/path/to/script.py")  # noqa: SLF001
         assert file_type == "python"
 
         # Test JavaScript file
-        file_type = command._infer_file_type("/app.js")
+        file_type = command._infer_file_type("/app.js")  # noqa: SLF001
         assert file_type == "javascript"
 
         # Test TypeScript file
-        file_type = command._infer_file_type("/component.tsx")
+        file_type = command._infer_file_type("/component.tsx")  # noqa: SLF001
         assert file_type == "typescript"
 
         # Test unknown file
-        file_type = command._infer_file_type("/data.txt")
+        file_type = command._infer_file_type("/data.txt")  # noqa: SLF001
         assert file_type == "text"

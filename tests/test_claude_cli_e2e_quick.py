@@ -1,3 +1,4 @@
+# ruff: noqa: SLF001
 """
 Quick E2E tests for Claude CLI integration
 

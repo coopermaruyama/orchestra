@@ -1,3 +1,4 @@
+# ruff: noqa: SLF001
 #!/usr/bin/env python3
 """
 Test runner for Orchestra test suite

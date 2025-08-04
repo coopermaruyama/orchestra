@@ -1,3 +1,4 @@
+# ruff: noqa: SLF001
 #!/usr/bin/env python3
 """
 Test suite for enhanced deviation detection in task monitor

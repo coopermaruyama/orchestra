@@ -1,3 +1,4 @@
+# ruff: noqa: SLF001
 """Unit tests for TimeMachine state persistence"""
 
 import os

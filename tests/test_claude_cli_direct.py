@@ -1,3 +1,4 @@
+# ruff: noqa: SLF001
 """
 Test running Claude CLI directly with specific parameters
 """

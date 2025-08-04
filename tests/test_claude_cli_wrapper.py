@@ -1,3 +1,4 @@
+# ruff: noqa: SLF001
 """
 Tests for enhanced Claude CLI wrapper
 """
