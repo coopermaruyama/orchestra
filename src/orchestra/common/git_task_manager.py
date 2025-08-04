@@ -19,7 +19,7 @@ class GitTaskManager:
 
     def __init__(self, working_dir: Optional[str] = None):
         """Initialize git task manager
-        
+
         Args:
             working_dir: Working directory for git operations (defaults to current dir)
         """
@@ -33,17 +33,13 @@ class GitTaskManager:
             cwd=self.working_dir,
             capture_output=True,
             text=True,
-            check=True
+            check=True,
         )
 
     def _run_git_wip_command(self, args: List[str]) -> subprocess.CompletedProcess:
         """Run git-wip command in working directory"""
         return subprocess.run(
-            args,
-            cwd=self.working_dir,
-            capture_output=True,
-            text=True,
-            check=True
+            args, cwd=self.working_dir, capture_output=True, text=True, check=True
         )
 
     def _get_git_wip_path(self) -> str:
@@ -54,8 +50,9 @@ class GitTaskManager:
 
         if git_wip_path.exists():
             # Make sure it's executable
-            import stat
             import os
+            import stat
+
             if not os.access(str(git_wip_path), os.X_OK):
                 # Try to make it executable
                 try:
@@ -66,9 +63,10 @@ class GitTaskManager:
 
         # Fallback: assume git-wip is in PATH
         import shutil
+
         if shutil.which("git-wip"):
             return "git-wip"
-        
+
         # If still not found, raise a more helpful error
         raise FileNotFoundError(
             f"git-wip not found. Expected at: {git_wip_path}\n"
@@ -102,17 +100,18 @@ class GitTaskManager:
         except subprocess.CalledProcessError:
             return False
 
-    def create_task_snapshot(self, task_id: Optional[str] = None,
-                            task_description: str = "") -> GitTaskState:
+    def create_task_snapshot(
+        self, task_id: Optional[str] = None, task_description: str = ""
+    ) -> GitTaskState:
         """Create a non-invasive task snapshot using git-wip
-        
+
         Args:
             task_id: Unique task identifier (generates if None)
             task_description: Human-readable task description
-            
+
         Returns:
             GitTaskState with snapshot information
-            
+
         Raises:
             RuntimeError: If not in git repository or git operations fail
         """
@@ -128,12 +127,16 @@ class GitTaskManager:
         base_sha = self._get_current_sha()
 
         # Create WIP snapshot without switching branches
-        wip_message = f"Task: {task_description}" if task_description else f"Task {task_id}"
+        wip_message = (
+            f"Task: {task_description}" if task_description else f"Task {task_id}"
+        )
 
         try:
             # Use git-wip to create snapshot with untracked files
             git_wip_path = self._get_git_wip_path()
-            result = self._run_git_wip_command([git_wip_path, "save", wip_message, "--untracked"])
+            result = self._run_git_wip_command(
+                [git_wip_path, "save", wip_message, "--untracked"]
+            )
         except subprocess.CalledProcessError as e:
             # Check if it's just "no changes" error (exit code 1 with stderr "no changes")
             if e.returncode == 1 and e.stderr.strip() == "no changes":
@@ -142,7 +145,9 @@ class GitTaskManager:
             else:
                 # Try without untracked files as fallback
                 try:
-                    result = self._run_git_wip_command([git_wip_path, "save", wip_message])
+                    result = self._run_git_wip_command(
+                        [git_wip_path, "save", wip_message]
+                    )
                 except subprocess.CalledProcessError as e2:
                     if e2.returncode == 1 and e2.stderr.strip() == "no changes":
                         # This is expected when working tree hasn't changed
@@ -162,21 +167,20 @@ class GitTaskManager:
             branch_name=current_branch,  # User stays on original branch
             base_branch=current_branch,
             created_at=datetime.now(),
-            subagent_branches={
-                "wip_snapshot": wip_branch
-            }
+            subagent_branches={"wip_snapshot": wip_branch},
         )
 
         return task_state
 
-    def get_task_diff(self, task_state: GitTaskState,
-                     target_sha: Optional[str] = None) -> str:
+    def get_task_diff(
+        self, task_state: GitTaskState, target_sha: Optional[str] = None
+    ) -> str:
         """Get git diff for task changes
-        
+
         Args:
             task_state: Task state with WIP snapshot
             target_sha: Target SHA to diff to (defaults to HEAD)
-            
+
         Returns:
             Git diff output as string
         """
@@ -187,24 +191,23 @@ class GitTaskManager:
         wip_ref = task_state.subagent_branches.get("wip_snapshot")
         if wip_ref:
             # Show changes since WIP snapshot was created
-            result = self._run_git_command([
-                "diff", f"{wip_ref}..{target_sha}"
-            ])
+            result = self._run_git_command(["diff", f"{wip_ref}..{target_sha}"])
         else:
             # Fallback to base SHA
-            result = self._run_git_command([
-                "diff", f"{task_state.base_sha}..{target_sha}"
-            ])
+            result = self._run_git_command(
+                ["diff", f"{task_state.base_sha}..{target_sha}"]
+            )
         return result.stdout
 
-    def get_task_file_changes(self, task_state: GitTaskState,
-                             target_sha: Optional[str] = None) -> List[str]:
+    def get_task_file_changes(
+        self, task_state: GitTaskState, target_sha: Optional[str] = None
+    ) -> List[str]:
         """Get list of files changed in task
-        
+
         Args:
             task_state: Task state with WIP snapshot
             target_sha: Target SHA to diff to (defaults to HEAD)
-            
+
         Returns:
             List of file paths that changed
         """
@@ -215,24 +218,24 @@ class GitTaskManager:
         wip_ref = task_state.subagent_branches.get("wip_snapshot")
         if wip_ref:
             # Show files changed since WIP snapshot was created
-            result = self._run_git_command([
-                "diff", "--name-only", f"{wip_ref}..{target_sha}"
-            ])
+            result = self._run_git_command(
+                ["diff", "--name-only", f"{wip_ref}..{target_sha}"]
+            )
         else:
             # Fallback to base SHA
-            result = self._run_git_command([
-                "diff", "--name-only", f"{task_state.base_sha}..{target_sha}"
-            ])
+            result = self._run_git_command(
+                ["diff", "--name-only", f"{task_state.base_sha}..{target_sha}"]
+            )
 
         files = result.stdout.strip().split("\n") if result.stdout.strip() else []
         return [f for f in files if f]  # Filter empty strings
 
     def update_task_state(self, task_state: GitTaskState) -> GitTaskState:
         """Update task state with current git information
-        
+
         Args:
             task_state: Existing task state to update
-            
+
         Returns:
             Updated task state with current SHA
         """
@@ -245,11 +248,14 @@ class GitTaskManager:
         task_state.current_sha = self._get_current_sha()
         return task_state
 
-    def cleanup_task_branch(self, task_state: GitTaskState,
-                           merge_back: bool = False,
-                           delete_branch: bool = True) -> None:
+    def cleanup_task_branch(
+        self,
+        task_state: GitTaskState,
+        merge_back: bool = False,
+        delete_branch: bool = True,
+    ) -> None:
         """Clean up task branch
-        
+
         Args:
             task_state: Task state with branch information
             merge_back: Whether to merge changes back to base branch
@@ -268,27 +274,28 @@ class GitTaskManager:
 
     def switch_to_task_branch(self, task_state: GitTaskState) -> None:
         """Switch to task branch
-        
+
         Args:
             task_state: Task state with branch information
         """
         self._run_git_command(["checkout", task_state.branch_name])
 
-    def create_subagent_branch(self, task_state: GitTaskState,
-                              agent_name: str) -> str:
+    def create_subagent_branch(self, task_state: GitTaskState, agent_name: str) -> str:
         """Create a branch for subagent analysis
-        
+
         Args:
             task_state: Parent task state
             agent_name: Name of the subagent
-            
+
         Returns:
             Name of created subagent branch
         """
         subagent_branch = f"{task_state.branch_name}/{agent_name}"
 
         # Create branch from task branch
-        self._run_git_command(["checkout", "-b", subagent_branch, task_state.branch_name])
+        self._run_git_command(
+            ["checkout", "-b", subagent_branch, task_state.branch_name]
+        )
 
         # Update task state with subagent branch
         task_state.subagent_branches[agent_name] = subagent_branch
@@ -297,7 +304,7 @@ class GitTaskManager:
 
     def list_task_branches(self) -> List[str]:
         """List all task branches
-        
+
         Returns:
             List of task branch names
         """
@@ -314,7 +321,7 @@ class GitTaskManager:
 
     def get_git_status(self) -> Dict[str, Any]:
         """Get current git status information
-        
+
         Returns:
             Dictionary with git status information
         """
@@ -329,40 +336,44 @@ class GitTaskManager:
             "branch": current_branch,
             "sha": current_sha,
             "is_clean": is_clean,
-            "working_dir": self.working_dir
+            "working_dir": self.working_dir,
         }
 
-    def create_worktree(self, worktree_path: str, branch_name: Optional[str] = None,
-                       base_ref: Optional[str] = None) -> str:
+    def create_worktree(
+        self,
+        worktree_path: str,
+        branch_name: Optional[str] = None,
+        base_ref: Optional[str] = None,
+    ) -> str:
         """Create a git worktree
-        
+
         Args:
             worktree_path: Path where worktree should be created
             branch_name: Optional branch name for the worktree
             base_ref: Base reference to create worktree from (defaults to HEAD)
-            
+
         Returns:
             Path to created worktree
-            
+
         Raises:
             subprocess.CalledProcessError: If git command fails
         """
         cmd = ["worktree", "add"]
-        
+
         if branch_name:
             cmd.extend(["-b", branch_name])
-            
+
         cmd.append(worktree_path)
-        
+
         if base_ref:
             cmd.append(base_ref)
-            
+
         self._run_git_command(cmd)
         return worktree_path
 
     def remove_worktree(self, worktree_path: str, force: bool = False) -> None:
         """Remove a git worktree
-        
+
         Args:
             worktree_path: Path to worktree to remove
             force: Force removal even if there are changes
@@ -371,42 +382,43 @@ class GitTaskManager:
         if force:
             cmd.append("--force")
         cmd.append(worktree_path)
-        
+
         try:
             self._run_git_command(cmd)
         except subprocess.CalledProcessError as e:
             # Log but don't fail - worktree might already be removed
             import logging
+
             logging.warning(f"Failed to remove worktree: {e}")
 
     def list_worktrees(self) -> List[Dict[str, str]]:
         """List all git worktrees
-        
+
         Returns:
             List of worktree information dicts
         """
         result = self._run_git_command(["worktree", "list", "--porcelain"])
-        
+
         worktrees = []
         current_worktree = {}
-        
+
         for line in result.stdout.strip().split("\n"):
             if not line:
                 if current_worktree:
                     worktrees.append(current_worktree)
                     current_worktree = {}
                 continue
-                
+
             if line.startswith("worktree "):
                 current_worktree["path"] = line.split(" ", 1)[1]
             elif line.startswith("HEAD "):
                 current_worktree["head"] = line.split(" ", 1)[1]
             elif line.startswith("branch "):
                 current_worktree["branch"] = line.split(" ", 1)[1]
-                
+
         if current_worktree:
             worktrees.append(current_worktree)
-            
+
         return worktrees
 
     def prune_worktrees(self) -> None:

@@ -11,6 +11,7 @@ from typing import Any, Dict
 @dataclass
 class GitTaskState:
     """Git-aware task state that tracks branches and commits"""
+
     task_id: str
     task_description: str
     base_sha: str
@@ -32,7 +33,7 @@ class GitTaskState:
             "base_branch": self.base_branch,
             "created_at": self.created_at.isoformat(),
             "subagent_branches": self.subagent_branches,
-            "metadata": self.metadata
+            "metadata": self.metadata,
         }
 
     @classmethod
@@ -50,7 +51,7 @@ class GitTaskState:
             base_branch=data.get("base_branch", "main"),
             created_at=created_at,
             subagent_branches=data.get("subagent_branches", {}),
-            metadata=data.get("metadata", {})
+            metadata=data.get("metadata", {}),
         )
 
     def save_to_file(self, file_path: str) -> None:
@@ -69,6 +70,7 @@ class GitTaskState:
 @dataclass
 class TaskRequirement:
     """Individual task requirement - kept for backward compatibility"""
+
     id: str
     description: str
     priority: int  # 1-5, where 1 is highest
@@ -79,7 +81,7 @@ class TaskRequirement:
             "id": self.id,
             "description": self.description,
             "priority": self.priority,
-            "completed": self.completed
+            "completed": self.completed,
         }
 
     @classmethod
@@ -88,5 +90,5 @@ class TaskRequirement:
             id=data["id"],
             description=data["description"],
             priority=data["priority"],
-            completed=data.get("completed", False)
+            completed=data.get("completed", False),
         )

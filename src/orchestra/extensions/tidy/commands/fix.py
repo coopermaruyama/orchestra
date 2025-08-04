@@ -78,7 +78,9 @@ Return the complete fixed file content. Fix all formatting, linting, and style i
 
         return "\n".join(prompt_parts)
 
-    def parse_response(self, response: ClaudeResponse, original_content: str = "") -> Dict[str, Any]:
+    def parse_response(
+        self, response: ClaudeResponse, original_content: str = ""
+    ) -> Dict[str, Any]:
         """Parse Claude's response and extract fixed code"""
         try:
             content = response.content
@@ -92,7 +94,7 @@ Return the complete fixed file content. Fix all formatting, linting, and style i
                     "fixed": False,
                     "fixed_content": fixed_content,
                     "changes_made": [],
-                    "unfixable_issues": []
+                    "unfixable_issues": [],
                 }
 
             # Detect what changes were made
@@ -105,7 +107,7 @@ Return the complete fixed file content. Fix all formatting, linting, and style i
                 "fixed": True,
                 "fixed_content": fixed_content,
                 "changes_made": changes_made,
-                "unfixable_issues": unfixable_issues
+                "unfixable_issues": unfixable_issues,
             }
 
         except Exception as e:
@@ -115,7 +117,7 @@ Return the complete fixed file content. Fix all formatting, linting, and style i
                 "fixed_content": original_content,
                 "changes_made": [],
                 "unfixable_issues": [],
-                "error": f"Failed to parse response: {e!s}"
+                "error": f"Failed to parse response: {e!s}",
             }
 
     def execute(self, input_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -131,9 +133,7 @@ Return the complete fixed file content. Fix all formatting, linting, and style i
             # Re-parse with original content for better diff
             try:
                 response = ClaudeResponse(
-                    success=True,
-                    content=result.get("fixed_content", ""),
-                    error=None
+                    success=True, content=result.get("fixed_content", ""), error=None
                 )
                 enhanced_result = self.parse_response(response, original_content)
                 result.update(enhanced_result)
@@ -159,8 +159,10 @@ Return the complete fixed file content. Fix all formatting, linting, and style i
 
         for line in lines:
             # Skip lines that look like explanations
-            if any(phrase in line.lower() for phrase in
-                   ["here's", "here is", "the fixed", "i've", "this code"]):
+            if any(
+                phrase in line.lower()
+                for phrase in ["here's", "here is", "the fixed", "i've", "this code"]
+            ):
                 continue
             code_lines.append(line)
 
@@ -175,12 +177,7 @@ Return the complete fixed file content. Fix all formatting, linting, and style i
         fixed_lines = fixed.splitlines()
 
         # Use difflib to find changes
-        differ = difflib.unified_diff(
-            original_lines,
-            fixed_lines,
-            lineterm="",
-            n=0
-        )
+        differ = difflib.unified_diff(original_lines, fixed_lines, lineterm="", n=0)
 
         # Analyze diff to categorize changes
         change_types = {
@@ -189,7 +186,7 @@ Return the complete fixed file content. Fix all formatting, linting, and style i
             "indentation": False,
             "type_hints": False,
             "syntax": False,
-            "style": False
+            "style": False,
         }
 
         for line in differ:
@@ -214,52 +211,66 @@ Return the complete fixed file content. Fix all formatting, linting, and style i
                     change_types["type_hints"] = True
 
                 # Detect missing colons (syntax)
-                if re.search(r"def \w+\(.*\)(?!:)", line) or re.search(r"class \w+(?!:)", line):
+                if re.search(r"def \w+\(.*\)(?!:)", line) or re.search(
+                    r"class \w+(?!:)", line
+                ):
                     change_types["syntax"] = True
 
         # Build change list
         if change_types["spacing"]:
-            changes.append({
-                "line": 0,  # Would need more logic for exact lines
-                "issue": "Spacing and operator formatting",
-                "fix_applied": "Fixed spacing around operators"
-            })
+            changes.append(
+                {
+                    "line": 0,  # Would need more logic for exact lines
+                    "issue": "Spacing and operator formatting",
+                    "fix_applied": "Fixed spacing around operators",
+                }
+            )
 
         if change_types["imports"]:
-            changes.append({
-                "line": 0,
-                "issue": "Import statement formatting",
-                "fix_applied": "Organized and formatted imports"
-            })
+            changes.append(
+                {
+                    "line": 0,
+                    "issue": "Import statement formatting",
+                    "fix_applied": "Organized and formatted imports",
+                }
+            )
 
         if change_types["indentation"]:
-            changes.append({
-                "line": 0,
-                "issue": "Indentation inconsistency",
-                "fix_applied": "Fixed indentation to match style guide"
-            })
+            changes.append(
+                {
+                    "line": 0,
+                    "issue": "Indentation inconsistency",
+                    "fix_applied": "Fixed indentation to match style guide",
+                }
+            )
 
         if change_types["type_hints"]:
-            changes.append({
-                "line": 0,
-                "issue": "Missing type annotations",
-                "fix_applied": "Added type hints"
-            })
+            changes.append(
+                {
+                    "line": 0,
+                    "issue": "Missing type annotations",
+                    "fix_applied": "Added type hints",
+                }
+            )
 
         if change_types["syntax"]:
-            changes.append({
-                "line": 0,
-                "issue": "Syntax error",
-                "fix_applied": "Fixed syntax errors"
-            })
+            changes.append(
+                {
+                    "line": 0,
+                    "issue": "Syntax error",
+                    "fix_applied": "Fixed syntax errors",
+                }
+            )
 
         # If we detected changes but no specific types, add generic
         if original.strip() != fixed.strip() and not changes:
-            changes.append({
-                "line": 0,
-                "issue": "Code style and formatting",
-                "fix_applied": "Applied project style rules"
-            })
+            changes.append(
+                {
+                    "line": 0,
+                    "issue": "Code style and formatting",
+                    "fix_applied": "Applied project style rules",
+                }
+            )
 
         return changes
 
@@ -272,11 +283,13 @@ Return the complete fixed file content. Fix all formatting, linting, and style i
         for match in re.finditer(todo_pattern, content, re.IGNORECASE):
             reason = match.group(1).strip()
             if "domain knowledge" in reason.lower() or "manual" in reason.lower():
-                unfixable.append({
-                    "line": 0,
-                    "issue": "Requires manual intervention",
-                    "reason": reason
-                })
+                unfixable.append(
+                    {
+                        "line": 0,
+                        "issue": "Requires manual intervention",
+                        "reason": reason,
+                    }
+                )
 
         return unfixable
 
@@ -304,8 +317,7 @@ Return the complete fixed file content. Fix all formatting, linting, and style i
             ".scala": "scala",
             ".r": "r",
             ".m": "objc",
-            ".mm": "objcpp"
+            ".mm": "objcpp",
         }
 
         return type_map.get(ext, "text")
-

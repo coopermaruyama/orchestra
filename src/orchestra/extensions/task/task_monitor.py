@@ -5,43 +5,52 @@ Direct integration with Claude Code hooks - no extra scripts needed
 """
 
 import json
-import sys
-import os
 import logging
-from typing import Dict, Optional, Any, List, cast
-from dataclasses import asdict
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 # Import from common library
-from orchestra.common import GitAwareExtension, TaskRequirement, HookHandler, setup_logger, truncate_value, format_hook_context
-from orchestra.common.types import HookInput, ToolInput
+from orchestra.common import (
+    GitAwareExtension,
+    HookHandler,
+    TaskRequirement,
+    format_hook_context,
+    setup_logger,
+    truncate_value,
+)
+from orchestra.common.types import HookInput
 
 
 class TaskAlignmentMonitor(GitAwareExtension):
     def __init__(self, config_path: Optional[str] = None) -> None:
         # Use CLAUDE_WORKING_DIR if available, otherwise use TMPDIR
-        working_dir = os.environ.get('CLAUDE_WORKING_DIR')
+        working_dir = os.environ.get("CLAUDE_WORKING_DIR")
         if working_dir:
-            log_dir = os.path.join(working_dir, '.claude', 'logs')
+            log_dir = os.path.join(working_dir, ".claude", "logs")
         else:
             # Fallback to system temp directory
             import tempfile
-            temp_dir = os.environ.get('TMPDIR', tempfile.gettempdir())
-            log_dir = os.path.join(temp_dir, 'claude-task-monitor')
+
+            temp_dir = os.environ.get("TMPDIR", tempfile.gettempdir())
+            log_dir = os.path.join(temp_dir, "claude-task-monitor")
 
         os.makedirs(log_dir, exist_ok=True)
-        log_file = os.path.join(log_dir, 'task_monitor.log')
+        log_file = os.path.join(log_dir, "task_monitor.log")
 
         # Configure logger with truncation
-        self.logger = setup_logger('task_monitor', log_file, logging.DEBUG, truncate=True, max_length=300)
+        self.logger = setup_logger(
+            "task_monitor", log_file, logging.DEBUG, truncate=True, max_length=300
+        )
         self.logger.info("TaskAlignmentMonitor initialized")
 
         # Initialize base class
-        base_working_dir = working_dir or '.'
+        base_working_dir = working_dir or "."
         super().__init__(
             config_file=config_path,  # Let base class handle the default path
-            working_dir=base_working_dir
+            working_dir=base_working_dir,
         )
 
         # Task monitor specific state
@@ -57,16 +66,20 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
     def get_default_config_filename(self) -> str:
         """Get the default configuration file name for this extension"""
-        return 'task.json'
+        return "task.json"
 
     def load_config(self) -> Dict[str, Any]:
         """Load or create configuration"""
         config = super().load_config()
 
-        self.task = config.get('task', '')
-        self.requirements = [TaskRequirement.from_dict(req) for req in config.get('requirements', [])]
-        self.settings = config.get('settings', {"strict_mode": True, "max_deviations": 3})
-        self.stats = config.get('stats', {'deviations': 0, 'commands': 0})
+        self.task = config.get("task", "")
+        self.requirements = [
+            TaskRequirement.from_dict(req) for req in config.get("requirements", [])
+        ]
+        self.settings = config.get(
+            "settings", {"strict_mode": True, "max_deviations": 3}
+        )
+        self.stats = config.get("stats", {"deviations": 0, "commands": 0})
 
         return config
 
@@ -74,16 +87,16 @@ class TaskAlignmentMonitor(GitAwareExtension):
         """Save configuration and progress"""
         if config is None:
             config = {
-                'task': self.task,
-                'requirements': [req.to_dict() for req in self.requirements],
-                'settings': self.settings,
-                'stats': self.stats,
-                'updated': datetime.now().isoformat()
+                "task": self.task,
+                "requirements": [req.to_dict() for req in self.requirements],
+                "settings": self.settings,
+                "stats": self.stats,
+                "updated": datetime.now().isoformat(),
             }
 
             # Include git task state if available
             if self.current_task_state:
-                config['git_task_state'] = self.current_task_state.to_dict()
+                config["git_task_state"] = self.current_task_state.to_dict()
 
         super().save_config(config)
 
@@ -94,17 +107,19 @@ class TaskAlignmentMonitor(GitAwareExtension):
             return input(prompt)
         if self.last_prompt_id == id:
             return current_input
-        elif self.last_prompt_id == id - 1:
+        if self.last_prompt_id == id - 1:
             # If we're not in a TTY, we need to use the Claude Code hooks
-            print('{"continue": false, ' \
-            # '"decision": "block", ' \
-            '"stopReason": "Enable auto-fix? [y/n]", ' \
-            '"suppressOutput": false, ' \
-            '"output": "Please provide more information.",' \
-            '"hookSpecificOutput": {' \
-                '"hookEventName": "UserPromptSubmit",' \
-                '"additionalContext": "Add to context"}' \
-            '}', file=sys.stdout)
+            print(
+                '{"continue": false, '  # '"decision": "block", ' \
+                '"stopReason": "Enable auto-fix? [y/n]", '
+                '"suppressOutput": false, '
+                '"output": "Please provide more information.",'
+                '"hookSpecificOutput": {'
+                '"hookEventName": "UserPromptSubmit",'
+                '"additionalContext": "Add to context"}'
+                "}",
+                file=sys.stdout,
+            )
         elif self.last_prompt_id < id - 1:
             match = self.response_by_id.get(id - 1, {})
             if match:
@@ -138,26 +153,28 @@ class TaskAlignmentMonitor(GitAwareExtension):
         # coontext will be type HookInputTodo
         if hook_type == "Stop":
             return self._handle_stop_hook(context)
-        elif hook_type == "UserPromptSubmit":
+        if hook_type == "UserPromptSubmit":
             # Handle UserPromptSubmit hook specifically
             self.logger.debug("Handling UserPromptSubmit hook")
             return self._handle_user_prompt_submit_hook(context)
-        elif hook_type == "SubagentStop":
+        if hook_type == "SubagentStop":
             return self._handle_subagent_stop_hook(context)
-        elif hook_type == "TodoWrite":
+        if hook_type == "TodoWrite":
             return self._handle_todowrite_hook(context)
-        elif hook_type == "Task":
+        if hook_type == "Task":
             return self._handle_task_hook(context)
-        elif hook_type == "PreToolUse":
+        if hook_type == "PreToolUse":
             return self._handle_pre_tool_use_hook(context)
-        elif hook_type == "PostToolUse":
+        if hook_type == "PostToolUse":
             return self._handle_post_tool_use_hook(context)
 
         return context
 
     def _handle_stop_hook(self, context: HookInput) -> Dict[str, Any]:
         """Handle Stop hook by analyzing conversation and determining if Claude should continue"""
-        self.logger.debug(f"_handle_stop_hook called with context keys: {list(context.keys())}")
+        self.logger.debug(
+            f"_handle_stop_hook called with context keys: {list(context.keys())}"
+        )
 
         # Skip if no task configured
         if not self.task:
@@ -172,7 +189,9 @@ class TaskAlignmentMonitor(GitAwareExtension):
         try:
             # Update current task state with latest git info
             if self.current_task_state:
-                self.logger.debug(f"Current task state exists: branch={self.current_task_state.branch_name}")
+                self.logger.debug(
+                    f"Current task state exists: branch={self.current_task_state.branch_name}"
+                )
                 self.update_task_state()
                 self.logger.debug("Task state updated")
             else:
@@ -180,30 +199,36 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
             # Build analysis context for subagents
             analysis_context = self._build_analysis_context()
-            self.logger.debug(f"Built analysis context: {truncate_value(analysis_context, 150)}")
+            self.logger.debug(
+                f"Built analysis context: {truncate_value(analysis_context, 150)}"
+            )
 
             if self.current_task_state and self.git_manager._is_git_repo():
                 self.logger.debug("Using git-aware subagent analysis")
                 # Use git-aware subagent analysis
                 return self._analyze_with_git_subagents(analysis_context)
-            else:
-                self.logger.debug("Using traditional external Claude analysis")
-                # Use traditional external Claude analysis
-                return self._analyze_with_external_claude(analysis_context)
+            self.logger.debug("Using traditional external Claude analysis")
+            # Use traditional external Claude analysis
+            return self._analyze_with_external_claude(analysis_context)
 
         except Exception as e:
-            self.logger.error(f"Stop hook analysis failed with exception: {type(e).__name__}: {e}")
+            self.logger.error(
+                f"Stop hook analysis failed with exception: {type(e).__name__}: {e}"
+            )
             import traceback
+
             self.logger.error(f"Traceback:\n{traceback.format_exc()}")
             return self._fallback_analysis()
 
     def _handle_subagent_stop_hook(self, context: HookInput) -> Dict[str, Any]:
         """Handle SubagentStop hook by parsing subagent results"""
-        self.logger.debug(f"_handle_subagent_stop_hook called with context keys: {list(context.keys())}")
+        self.logger.debug(
+            f"_handle_subagent_stop_hook called with context keys: {list(context.keys())}"
+        )
 
         try:
             # Get transcript path from context
-            transcript_path = context.get('transcript_path')
+            transcript_path = context.get("transcript_path")
             if not transcript_path:
                 self.logger.error("No transcript_path in SubagentStop context")
                 return HookHandler.create_allow_response()
@@ -211,62 +236,70 @@ class TaskAlignmentMonitor(GitAwareExtension):
             self.logger.debug(f"Reading transcript from: {transcript_path}")
 
             # Read the transcript file
-            with open(transcript_path, 'r') as f:
+            with open(transcript_path) as f:
                 transcript_content = f.read()
 
             # Parse the tail of the transcript to get subagent response
             # Look for the last assistant message which should contain the analysis
-            lines = transcript_content.strip().split('\n')
+            lines = transcript_content.strip().split("\n")
 
             # Find the last assistant response
             assistant_response = ""
             in_assistant_block = False
             for line in reversed(lines):
-                if line.strip().startswith('assistant:'):
+                if line.strip().startswith("assistant:"):
                     in_assistant_block = True
-                elif line.strip().startswith('user:') and in_assistant_block:
+                elif line.strip().startswith("user:") and in_assistant_block:
                     break
                 elif in_assistant_block:
-                    assistant_response = line + '\n' + assistant_response
+                    assistant_response = line + "\n" + assistant_response
 
-            self.logger.debug(f"Parsed assistant response: {truncate_value(assistant_response, 200)}")
+            self.logger.debug(
+                f"Parsed assistant response: {truncate_value(assistant_response, 200)}"
+            )
 
             # Analyze the subagent response
             response_lower = assistant_response.lower()
 
             # Check for indicators that we should continue working
             continue_indicators = [
-                'should continue',
-                'keep working',
-                'not complete',
-                'incomplete',
-                'more work needed',
-                'requirements remaining',
-                'next step',
-                'focus on'
+                "should continue",
+                "keep working",
+                "not complete",
+                "incomplete",
+                "more work needed",
+                "requirements remaining",
+                "next step",
+                "focus on",
             ]
 
             # Check for indicators that we can stop
             stop_indicators = [
-                'can stop',
-                'task complete',
-                'all requirements met',
-                'finished',
-                'done',
-                'no more work'
+                "can stop",
+                "task complete",
+                "all requirements met",
+                "finished",
+                "done",
+                "no more work",
             ]
 
-            should_continue = any(indicator in response_lower for indicator in continue_indicators)
-            should_stop = any(indicator in response_lower for indicator in stop_indicators)
+            should_continue = any(
+                indicator in response_lower for indicator in continue_indicators
+            )
+            should_stop = any(
+                indicator in response_lower for indicator in stop_indicators
+            )
 
-            self.logger.debug(f"Continue indicators found: {should_continue}, Stop indicators found: {should_stop}")
+            self.logger.debug(
+                f"Continue indicators found: {should_continue}, Stop indicators found: {should_stop}"
+            )
 
             # If we have clear indication to continue
             if should_continue and not should_stop:
                 # Extract focus area if mentioned
                 focus_area = ""
-                for line in assistant_response.split('\n'):
-                    if 'focus on' in line.lower() or 'next:' in line.lower():
+                for line in assistant_response.split("\n"):
+                    if "focus on" in line.lower() or "next:" in line.lower():
                         focus_area = line.strip()
                         break
 
@@ -284,6 +317,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
         except Exception as e:
             self.logger.error(f"Error in SubagentStop hook: {e}")
             import traceback
+
             self.logger.error(f"Traceback:\n{traceback.format_exc()}")
             # On error, fall back to allowing stop
             return HookHandler.create_allow_response()
@@ -294,8 +328,8 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
         try:
             # Log the tool input containing the todos
-            tool_input = context.get('tool_input', {})
-            todos = tool_input.get('todos', [])
+            tool_input = context.get("tool_input", {})
+            todos = tool_input.get("todos", [])
 
             self.logger.info(f"TodoWrite: {len(todos)} todos")
             for todo in todos:
@@ -314,10 +348,10 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
         try:
             # Log the task details
-            tool_input = context.get('tool_input', {})
-            subagent_type = tool_input.get('subagent_type', 'unknown')
-            description = tool_input.get('description', '')
-            prompt = tool_input.get('prompt', '')
+            tool_input = context.get("tool_input", {})
+            subagent_type = tool_input.get("subagent_type", "unknown")
+            description = tool_input.get("description", "")
+            prompt = tool_input.get("prompt", "")
 
             self.logger.info(f"Task subagent: {subagent_type}")
             self.logger.info(f"Task description: {description}")
@@ -332,12 +366,12 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
     def _handle_pre_tool_use_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle PreToolUse hook by logging the tool about to be used"""
-        tool_name = context.get('tool_name', 'unknown')
+        tool_name = context.get("tool_name", "unknown")
         self.logger.info(f"PreToolUse hook: {tool_name}")
 
         try:
             # Log the tool input
-            tool_input = context.get('tool_input', {})
+            tool_input = context.get("tool_input", {})
             self.logger.debug(f"Tool input: {json.dumps(tool_input, indent=2)}")
 
             # Allow the tool to proceed
@@ -349,20 +383,20 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
     def _handle_post_tool_use_hook(self, context: HookInput) -> Dict[str, Any]:
         """Handle PostToolUse hook by logging the tool result"""
-        tool_name = context.get('tool_name', 'unknown')
-        event_name = context.get('hook_event_name', 'unknown')
-        is_todo_write = tool_name == 'TodoWrite'
+        tool_name = context.get("tool_name", "unknown")
+        event_name = context.get("hook_event_name", "unknown")
+        is_todo_write = tool_name == "TodoWrite"
         self.logger.info(f"PostToolUse hook: tool={tool_name} event={event_name}")
 
         try:
             # Log the tool response
-            tool_response = context.get('tool_response', {})
+            tool_response = context.get("tool_response", {})
             self.logger.debug(f"Tool response: {json.dumps(tool_response, indent=2)}")
-            tool_input = context.get('tool_input', {})
+            tool_input = context.get("tool_input", {})
 
             if is_todo_write:
                 # If this is a TodoWrite, sync the todos from tool_input
-                todos = tool_input.get('todos', [])
+                todos = tool_input.get("todos", [])
                 self.logger.info(f"PostToolUse TodoWrite: {len(todos)} todos to sync")
 
                 # Sync Claude's todos into our task monitor state
@@ -377,6 +411,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
         except Exception as e:
             self.logger.error(f"Error in PostToolUse hook: {e}")
             import traceback
+
             self.logger.error(f"Traceback:\n{traceback.format_exc()}")
             return HookHandler.create_allow_response()
 
@@ -416,7 +451,11 @@ Please determine if the developer should continue working or if they can stop. C
         self.pending_analysis_context = analysis_context
 
         # Return a block response that will trigger Claude to run subagents
-        subagent_types = ['scope-creep-detector', 'over-engineering-detector', 'off-topic-detector']
+        subagent_types = [
+            "scope-creep-detector",
+            "over-engineering-detector",
+            "off-topic-detector",
+        ]
         self.logger.debug(f"Requesting subagent analysis with: {subagent_types}")
 
         # Create a prompt that will trigger subagent analysis
@@ -435,9 +474,9 @@ Use these subagents to determine:
 
     def _analyze_with_external_claude(self, analysis_context: str) -> Dict[str, Any]:
         """Analyze using external Claude instance"""
-        import subprocess
         import json
         import re
+        import subprocess
 
         analysis_prompt = f"""{analysis_context}
 
@@ -456,24 +495,30 @@ Respond with JSON in this exact format:
         try:
             self.logger.debug("Calling external Claude with analysis prompt")
             # Call external Claude with the analysis prompt
-            result = subprocess.run([
-                'claude', '-p', analysis_prompt
-            ], capture_output=True, text=True, timeout=30)
+            result = subprocess.run(
+                ["claude", "-p", analysis_prompt],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
 
             self.logger.debug(f"External Claude return code: {result.returncode}")
-            self.logger.debug(f"External Claude stdout length: {len(result.stdout) if result.stdout else 0}")
+            self.logger.debug(
+                f"External Claude stdout length: {len(result.stdout) if result.stdout else 0}"
+            )
 
             if result.returncode == 0 and result.stdout.strip():
                 # Parse JSON response from Claude
-                json_match = re.search(r'\{.*\}', result.stdout, re.DOTALL)
+                json_match = re.search(r"\{.*\}", result.stdout, re.DOTALL)
                 if json_match:
                     response = json.loads(json_match.group())
                     self.logger.debug(f"Parsed response: {response}")
 
-                    if response.get('should_continue', False):
+                    if response.get("should_continue", False):
                         # Block stopping - Claude should continue
-                        reason = response.get('reason', 'Task not complete')
-                        focus_area = response.get('focus_area', '')
+                        reason = response.get("reason", "Task not complete")
+                        focus_area = response.get("focus_area", "")
 
                         full_reason = reason
                         if focus_area:
@@ -481,12 +526,10 @@ Respond with JSON in this exact format:
 
                         self.logger.info(f"Blocking stop with reason: {full_reason}")
                         return HookHandler.create_block_response(full_reason)
-                    else:
-                        # Allow stopping - task is complete
-                        self.logger.info("Allowing stop - task complete")
-                        return HookHandler.create_allow_response()
-                else:
-                    self.logger.warning("No JSON found in external Claude response")
+                    # Allow stopping - task is complete
+                    self.logger.info("Allowing stop - task complete")
+                    return HookHandler.create_allow_response()
+                self.logger.warning("No JSON found in external Claude response")
 
         except subprocess.TimeoutExpired as e:
             self.logger.error(f"External Claude timed out: {e}")
@@ -501,12 +544,16 @@ Respond with JSON in this exact format:
     def _fallback_analysis(self) -> Dict[str, Any]:
         """Fallback analysis based on completion status"""
         self.logger.debug("Running fallback analysis")
-        incomplete_core = [r for r in self.requirements if not r.completed and r.priority <= 2]
+        incomplete_core = [
+            r for r in self.requirements if not r.completed and r.priority <= 2
+        ]
         self.logger.debug(f"Found {len(incomplete_core)} incomplete core requirements")
 
         if incomplete_core:
             next_requirement = min(incomplete_core, key=lambda x: x.priority)
-            self.logger.info(f"Blocking stop - core requirement incomplete: {next_requirement.description}")
+            self.logger.info(
+                f"Blocking stop - core requirement incomplete: {next_requirement.description}"
+            )
             return HookHandler.create_block_response(
                 f"Core requirement incomplete: {next_requirement.description}"
             )
@@ -529,51 +576,51 @@ Respond with JSON in this exact format:
         # Convert Claude's todos to TaskRequirements
         for i, todo in enumerate(todos):
             # Map Claude's priority (high/medium/low) to numeric (1-5)
-            priority_map = {
-                'high': 1,
-                'medium': 2,
-                'low': 3
-            }
-            priority = priority_map.get(todo.get('priority', 'medium'), 2)
+            priority_map = {"high": 1, "medium": 2, "low": 3}
+            priority = priority_map.get(todo.get("priority", "medium"), 2)
 
             # Map Claude's status to completed boolean
-            status = todo.get('status', 'pending')
-            completed = status == 'completed'
+            status = todo.get("status", "pending")
+            completed = status == "completed"
 
             # Create TaskRequirement
             requirement = TaskRequirement(
-                id=todo.get('id', str(i)),
-                description=todo.get('content', ''),
+                id=todo.get("id", str(i)),
+                description=todo.get("content", ""),
                 priority=priority,
-                completed=completed
+                completed=completed,
             )
 
             self.requirements.append(requirement)
-            self.logger.debug(f"Synced todo: {requirement.description} (P{priority}, {'completed' if completed else 'pending'})")
+            self.logger.debug(
+                f"Synced todo: {requirement.description} (P{priority}, {'completed' if completed else 'pending'})"
+            )
 
         # Update task description if we have todos
         if todos and not self.task:
             # Use the first high-priority todo as the task description
-            high_priority_todos = [t for t in todos if t.get('priority') == 'high']
+            high_priority_todos = [t for t in todos if t.get("priority") == "high"]
             if high_priority_todos:
-                self.task = f"Task: {high_priority_todos[0].get('content', 'Unnamed task')}"
+                self.task = (
+                    f"Task: {high_priority_todos[0].get('content', 'Unnamed task')}"
+                )
             else:
                 self.task = f"Task with {len(todos)} requirements"
 
-        self.logger.info(f"Task monitor state synced: {len(self.requirements)} requirements")
-
-
+        self.logger.info(
+            f"Task monitor state synced: {len(self.requirements)} requirements"
+        )
 
     def _get_progress(self) -> Dict[str, Any]:
         """Calculate progress statistics"""
         if not self.requirements:
-            return {'percentage': 0, 'completed': 0, 'total': 0}
+            return {"percentage": 0, "completed": 0, "total": 0}
 
         completed = sum(1 for r in self.requirements if r.completed)
         return {
-            'percentage': (completed / len(self.requirements)) * 100,
-            'completed': completed,
-            'total': len(self.requirements)
+            "percentage": (completed / len(self.requirements)) * 100,
+            "completed": completed,
+            "total": len(self.requirements),
         }
 
     def _get_current_requirement(self) -> str:
@@ -591,6 +638,7 @@ Respond with JSON in this exact format:
             return f"Work on: {req}"
         return "Review and finalize"
 
+
 def main() -> None:
     """CLI interface and hook handler"""
     if len(sys.argv) < 2:
@@ -602,8 +650,10 @@ def main() -> None:
         print("  hook <type>                     - Handle Claude Code hook")
         print("\nDeprecated commands (use Claude's todo system instead):")
         print("  start                           - Use Claude's todo management")
-        print("  reset                           - Todos sync from Claude automatically")
-        return
+        print(
+            "  reset                           - Todos sync from Claude automatically"
+        )
+        return None
 
     monitor = TaskAlignmentMonitor()
     command = sys.argv[1]
@@ -613,14 +663,16 @@ def main() -> None:
         print("🚀 Claude Code Task Setup")
         print("\nℹ️  Task management is now integrated with Claude's todo system!")
         print("\n💡 How to use:")
-        print("   1. Claude will automatically create and manage todos during conversations")
+        print(
+            "   1. Claude will automatically create and manage todos during conversations"
+        )
         print("   2. Task monitor will sync these todos and provide focus guidance")
         print("   3. Use '/task status' to see your current progress")
         print("\n✨ Example:")
         print("   User: 'Help me fix the login bug and add tests'")
         print("   Claude: *creates todos automatically*")
         print("   Task monitor: *syncs and tracks progress*")
-        return
+        return None
 
         # Interactive task setup with intelligent prompting
         print("🚀 Claude Code Task Setup\n")
@@ -638,19 +690,19 @@ def main() -> None:
         print("9. 📦 Other")
 
         task_type_map = {
-            '1': ('bug', 'Bug Fix'),
-            '2': ('feature', 'Feature'),
-            '3': ('refactor', 'Refactor'),
-            '4': ('docs', 'Documentation'),
-            '5': ('test', 'Testing'),
-            '6': ('ui', 'UI/UX'),
-            '7': ('perf', 'Performance'),
-            '8': ('security', 'Security'),
-            '9': ('other', 'Task')
+            "1": ("bug", "Bug Fix"),
+            "2": ("feature", "Feature"),
+            "3": ("refactor", "Refactor"),
+            "4": ("docs", "Documentation"),
+            "5": ("test", "Testing"),
+            "6": ("ui", "UI/UX"),
+            "7": ("perf", "Performance"),
+            "8": ("security", "Security"),
+            "9": ("other", "Task"),
         }
 
         choice = input("\nSelect (1-9): ").strip()
-        task_type, task_label = task_type_map.get(choice, ('other', 'Task'))
+        task_type, task_label = task_type_map.get(choice, ("other", "Task"))
 
         # Get initial description
         print(f"\n📝 Describe the {task_label.lower()}:")
@@ -659,7 +711,7 @@ def main() -> None:
         # Intelligent clarification based on task type
         clarifications = []
 
-        if task_type == 'bug':
+        if task_type == "bug":
             print("\n🤔 Let me help you clarify this bug fix...")
 
             # Error behavior
@@ -681,7 +733,7 @@ def main() -> None:
             if edge_cases:
                 clarifications.append(f"Consider: {edge_cases}")
 
-        elif task_type == 'feature':
+        elif task_type == "feature":
             print("\n🤔 Let's make sure we've thought this through...")
 
             # User value
@@ -711,7 +763,7 @@ def main() -> None:
             if deps:
                 clarifications.append(f"Depends on: {deps}")
 
-        elif task_type == 'refactor':
+        elif task_type == "refactor":
             print("\n🤔 Let's ensure this refactor has clear goals...")
 
             # Problem
@@ -727,12 +779,14 @@ def main() -> None:
                 clarifications.append(f"Boundaries: {boundaries}")
 
             # Verification
-            print("\nHow will you verify nothing broke? (existing tests? manual checks?)")
+            print(
+                "\nHow will you verify nothing broke? (existing tests? manual checks?)"
+            )
             verify = input("> ").strip()
             if verify:
                 clarifications.append(f"Verification: {verify}")
 
-        elif task_type == 'security':
+        elif task_type == "security":
             print("\n🤔 Security requires careful consideration...")
 
             # Threat
@@ -747,7 +801,7 @@ def main() -> None:
             if impact:
                 clarifications.append(f"Impact: {impact}")
 
-        elif task_type == 'perf':
+        elif task_type == "perf":
             print("\n🤔 Let's define performance goals...")
 
             # Current performance
@@ -765,35 +819,35 @@ def main() -> None:
         # Generate smart requirements based on type and clarifications
         requirements = []
 
-        if task_type == 'bug':
+        if task_type == "bug":
             requirements.append("Reproduce the bug consistently")
             requirements.append("Fix the root cause")
             requirements.append("Add test to prevent regression")
-            if 'edge cases' in ' '.join(clarifications).lower():
+            if "edge cases" in " ".join(clarifications).lower():
                 requirements.append("Handle edge cases")
 
-        elif task_type == 'feature':
+        elif task_type == "feature":
             requirements.append("Implement core functionality")
             if test_case:
                 requirements.append(f"Ensure {test_case}")
             requirements.append("Add error handling")
             requirements.append("Write tests")
-            if users and 'api' not in description.lower():
+            if users and "api" not in description.lower():
                 requirements.append("Create user interface")
 
-        elif task_type == 'refactor':
+        elif task_type == "refactor":
             requirements.append("Identify code to refactor")
             requirements.append("Refactor without changing behavior")
             requirements.append("Ensure all tests pass")
             requirements.append("Update documentation if needed")
 
-        elif task_type == 'security':
+        elif task_type == "security":
             requirements.append("Identify vulnerable code")
             requirements.append("Implement secure solution")
             requirements.append("Add security tests")
             requirements.append("Document security considerations")
 
-        elif task_type == 'perf':
+        elif task_type == "perf":
             requirements.append("Profile current performance")
             requirements.append("Implement optimization")
             requirements.append("Measure improvement")
@@ -827,7 +881,7 @@ def main() -> None:
 
         edit_choice = input("\nSelect (1-4): ").strip()
 
-        if edit_choice == '2':
+        if edit_choice == "2":
             print("\nAdd requirements (empty line to finish):")
             while True:
                 new_req = input(f"{len(requirements)+1}. ").strip()
@@ -835,13 +889,13 @@ def main() -> None:
                     break
                 requirements.append(new_req)
 
-        elif edit_choice == '3':
+        elif edit_choice == "3":
             print("\nEdit requirements (enter number to edit, 'done' to finish):")
             while True:
                 for i, req in enumerate(requirements, 1):
                     print(f"  {i}. {req}")
                 edit_num = input("\nEdit which? ").strip()
-                if edit_num.lower() == 'done':
+                if edit_num.lower() == "done":
                     break
                 try:
                     idx = int(edit_num) - 1
@@ -852,7 +906,7 @@ def main() -> None:
                 except:
                     pass
 
-        elif edit_choice == '4':
+        elif edit_choice == "4":
             print("Starting over...")
             return main()
 
@@ -863,17 +917,19 @@ def main() -> None:
 
         # Initialize with the refined task
         print("\n🚀 Initializing task monitor...")
-        sys.argv = ['task_monitor.py', 'init', full_task] + requirements
+        sys.argv = ["task_monitor.py", "init", full_task] + requirements
         return main()
 
-    elif command == "init":
+    if command == "init":
         # Show that hooks are managed by Orchestra
         print("🎼 Task Monitor Initialized")
         print("\nℹ️  Hooks are managed by Orchestra")
         print("   Run 'orchestra enable task' to set up all hooks properly")
         print("\n📝 Task requirements will be synced from Claude's TodoWrite tool")
         print("\n💡 How it works:")
-        print("   1. Claude automatically creates and manages todos during conversations")
+        print(
+            "   1. Claude automatically creates and manages todos during conversations"
+        )
         print("   2. Task monitor syncs these todos via PostToolUse hook")
         print("   3. Use '/task status' to see your current progress")
         print("   4. Task monitor provides focus guidance based on Claude's todos")
@@ -889,31 +945,37 @@ def main() -> None:
             print("\n✅ Orchestra detected - hooks should be working")
 
         # Check if .claude/orchestra/ is in .gitignore
-        working_dir = os.environ.get('CLAUDE_WORKING_DIR', '.')
+        working_dir = os.environ.get("CLAUDE_WORKING_DIR", ".")
         gitignore_path = Path(working_dir) / ".gitignore"
         if gitignore_path.exists():
-            with open(gitignore_path, 'r') as f:
+            with open(gitignore_path) as f:
                 gitignore_content = f.read()
-                if '.claude/orchestra/' not in gitignore_content:
-                    print("\n💡 Tip: Consider adding '.claude/orchestra/' to your .gitignore file")
+                if ".claude/orchestra/" not in gitignore_content:
+                    print(
+                        "\n💡 Tip: Consider adding '.claude/orchestra/' to your .gitignore file"
+                    )
 
     elif command == "status":
         if not monitor.requirements:
             print("📋 No todos synced from Claude yet.")
-            print("\n💡 Todos will sync automatically when Claude uses the TodoWrite tool")
-            return
+            print(
+                "\n💡 Todos will sync automatically when Claude uses the TodoWrite tool"
+            )
+            return None
 
         progress = monitor._get_progress()
         print(f"\n📌 Task: {monitor.task or 'Synced from Claude'}")
         print(f"📊 Progress: {progress['percentage']:.0f}% complete")
-        print(f"📈 Stats: {monitor.stats['commands']} commands, {monitor.stats['deviations']} deviations")
-        print(f"\n📋 Requirements (synced from Claude):")
+        print(
+            f"📈 Stats: {monitor.stats['commands']} commands, {monitor.stats['deviations']} deviations"
+        )
+        print("\n📋 Requirements (synced from Claude):")
 
         for requirement in monitor.requirements:
             icon = "✅" if requirement.completed else "⏳"
             print(f"  {icon} {requirement.description} (P{requirement.priority})")
 
-        if progress['percentage'] < 100:
+        if progress["percentage"] < 100:
             print(f"\n➡️  Next: {monitor._get_next_action()}")
 
         print("\n🔄 Auto-synced from Claude's todo list")
@@ -926,7 +988,7 @@ def main() -> None:
 
     elif command == "hook":
         if len(sys.argv) < 3:
-            return
+            return None
 
         hook_type = sys.argv[2]
 
@@ -948,26 +1010,26 @@ def main() -> None:
                     "subcommands": {
                         "init": {
                             "description": "Initialize task monitor hooks",
-                            "command": f"python {os.path.abspath(__file__)} init"
+                            "command": f"python {os.path.abspath(__file__)} init",
                         },
                         "status": {
                             "description": "Check progress (synced from Claude's todos)",
-                            "command": f"python {os.path.abspath(__file__)} status"
+                            "command": f"python {os.path.abspath(__file__)} status",
                         },
                         "next": {
                             "description": "Show next priority action",
-                            "command": f"python {os.path.abspath(__file__)} next"
+                            "command": f"python {os.path.abspath(__file__)} next",
                         },
                         "focus": {
                             "description": "Get reminder of current focus area",
-                            "command": f"python {os.path.abspath(__file__)} focus"
-                        }
-                    }
+                            "command": f"python {os.path.abspath(__file__)} focus",
+                        },
+                    },
                 },
                 "/focus": {
                     "description": "Quick reminder of what to work on next (from Claude's todos)",
-                    "command": f"python {os.path.abspath(__file__)} focus"
-                }
+                    "command": f"python {os.path.abspath(__file__)} focus",
+                },
             }
         }
         print(json.dumps(slash_config, indent=2))
@@ -976,14 +1038,16 @@ def main() -> None:
         # Quick command to show next action
         if not monitor.task:
             print("No task configured. Run: /task start")
-            return
+            return None
 
         progress = monitor._get_progress()
         current = monitor._get_current_requirement()
 
         if current != "All complete":
             print(f"📌 Next: {current}")
-            print(f"📊 Progress: {progress['percentage']:.0f}% ({progress['completed']}/{progress['total']})")
+            print(
+                f"📊 Progress: {progress['percentage']:.0f}% ({progress['completed']}/{progress['total']})"
+            )
         else:
             print("✅ All requirements complete!")
 
@@ -991,13 +1055,13 @@ def main() -> None:
         # Quick focus reminder
         if not monitor.task:
             print("No task configured. Run: /task start")
-            return
+            return None
 
         print(f"🎯 Task: {monitor.task}")
         print(f"📌 Focus on: {monitor._get_current_requirement()}")
 
         # Show any active warnings
-        if monitor.stats['deviations'] > 0:
+        if monitor.stats["deviations"] > 0:
             print(f"⚠️  {monitor.stats['deviations']} deviations detected this session")
 
     elif command == "complete":
@@ -1007,6 +1071,7 @@ def main() -> None:
         print("\n💡 To mark a todo as complete:")
         print("   1. Let Claude update its todo list during the conversation")
         print("   2. Task monitor will automatically sync the changes")
+
 
 if __name__ == "__main__":
     main()

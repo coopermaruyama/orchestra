@@ -88,11 +88,11 @@ class SessionStateManager:
         self, session_id: str, transcript_id: str, state: Dict[str, Any]
     ) -> None:
         """Set state for a session/transcript.
-e
-        Args:
-            session_id: Claude session ID
-            transcript_id: Transcript ID for the conversation
-            state: State dictionary to persist
+        e
+                Args:
+                    session_id: Claude session ID
+                    transcript_id: Transcript ID for the conversation
+                    state: State dictionary to persist
         """
         state_path = self._get_state_path(session_id, transcript_id)
 

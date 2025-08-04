@@ -328,7 +328,7 @@ class TimeMachineMonitor(GitAwareExtension):
                     result = self.git_manager._run_git_command(
                         ["for-each-ref", "--format=%(refname)", "refs/wip/"]
                     )
-                    refs = result.stdout.strip().split('\n')
+                    refs = result.stdout.strip().split("\n")
                     if refs and refs[0]:
                         # Use the first wip ref found
                         result = self.git_manager._run_git_command(
@@ -378,11 +378,11 @@ class TimeMachineMonitor(GitAwareExtension):
         # Don't reload config, just load checkpoints from git
         old_checkpoints = self.checkpoints.copy()
         self._load_checkpoints_from_git()
-        
+
         # If no checkpoints were loaded from git, use the ones from config
         if not self.checkpoints and old_checkpoints:
             self.checkpoints = old_checkpoints
-        
+
         if not self.checkpoints:
             print("No checkpoints found.")
             return
@@ -401,7 +401,9 @@ class TimeMachineMonitor(GitAwareExtension):
                 relative_time = "unknown time"
 
             prompt_preview = checkpoint.get("prompt_preview", "No preview available")
-            checkpoint_id = checkpoint.get("id", f"checkpoint-{len(self.checkpoints) - i - 1}")
+            checkpoint_id = checkpoint.get(
+                "id", f"checkpoint-{len(self.checkpoints) - i - 1}"
+            )
 
             if turns_ago == 0:
                 print(f"→ [{checkpoint_id}] {relative_time} - {prompt_preview}")
@@ -417,7 +419,7 @@ class TimeMachineMonitor(GitAwareExtension):
         """Checkout a specific checkpoint"""
         # First, try to load checkpoints from git
         self._load_checkpoints_from_git()
-        
+
         checkpoint = self._find_checkpoint(checkpoint_id)
         if not checkpoint:
             print(f"❌ Checkpoint not found: {checkpoint_id}")
@@ -435,7 +437,7 @@ class TimeMachineMonitor(GitAwareExtension):
         """View full details of a checkpoint"""
         # First, try to load checkpoints from git
         self._load_checkpoints_from_git()
-        
+
         checkpoint = self._find_checkpoint(checkpoint_id)
         if not checkpoint:
             print(f"❌ Checkpoint not found: {checkpoint_id}")
@@ -517,12 +519,12 @@ class TimeMachineMonitor(GitAwareExtension):
             return f"{hours} hour{'s' if hours > 1 else ''} ago"
         days = delta.days
         return f"{days} day{'s' if days > 1 else ''} ago"
-    
+
     def _load_checkpoints_from_git(self) -> None:
         """Load checkpoints from git history"""
         if not self.git_manager._is_git_repo():
             return
-        
+
         try:
             # Find the wip branch
             wip_refs = []
@@ -530,88 +532,100 @@ class TimeMachineMonitor(GitAwareExtension):
                 result = self.git_manager._run_git_command(
                     ["for-each-ref", "--format=%(refname)", "refs/wip/"]
                 )
-                wip_refs = [ref.strip() for ref in result.stdout.strip().split('\n') if ref.strip()]
+                wip_refs = [
+                    ref.strip()
+                    for ref in result.stdout.strip().split("\n")
+                    if ref.strip()
+                ]
             except Exception as e:
                 self.logger.debug(f"Failed to get wip refs: {e}")
-                pass
-            
+
             if not wip_refs:
                 self.logger.debug("No wip refs found")
                 return
-            
+
             self.logger.debug(f"Found wip refs: {wip_refs}")
-            
+
             # Clear existing checkpoints to avoid duplicates
             self.checkpoints = []
-            
+
             # Get all commits from the wip branch
             for wip_ref in wip_refs:
                 try:
                     # Get the log of all TimeMachine commits
-                    result = self.git_manager._run_git_command([
-                        "log", wip_ref, 
-                        "--grep=TimeMachine:", 
-                        "--format=%H|%ct|%s",
-                        "--reverse"  # Oldest first
-                    ])
-                    
-                    self.logger.debug(f"Git log result for {wip_ref}: {result.stdout[:200]}")
-                    
+                    result = self.git_manager._run_git_command(
+                        [
+                            "log",
+                            wip_ref,
+                            "--grep=TimeMachine:",
+                            "--format=%H|%ct|%s",
+                            "--reverse",  # Oldest first
+                        ]
+                    )
+
+                    self.logger.debug(
+                        f"Git log result for {wip_ref}: {result.stdout[:200]}"
+                    )
+
                     if not result.stdout.strip():
                         self.logger.debug(f"No TimeMachine commits found in {wip_ref}")
                         continue
-                    
+
                     # Parse each commit
                     checkpoint_count = 0
-                    for line in result.stdout.strip().split('\n'):
+                    for line in result.stdout.strip().split("\n"):
                         if not line:
                             continue
-                        
-                        parts = line.split('|', 2)
+
+                        parts = line.split("|", 2)
                         if len(parts) < 3:
                             continue
-                        
+
                         commit_sha = parts[0]
                         commit_time = int(parts[1])
                         subject = parts[2]
-                        
+
                         # Extract prompt preview from subject
                         if subject.startswith("TimeMachine: "):
-                            prompt_preview = subject[13:].rstrip('.')
+                            prompt_preview = subject[13:].rstrip(".")
                             if len(prompt_preview) > 80:
                                 prompt_preview = prompt_preview[:80]
-                            
+
                             # Get full metadata from commit message
                             try:
                                 result = self.git_manager._run_git_command(
                                     ["show", "--no-patch", "--format=%B", commit_sha]
                                 )
-                                
+
                                 # Parse metadata from commit message
                                 lines = result.stdout.strip().split("\n")
-                                timestamp = datetime.fromtimestamp(commit_time).isoformat()
-                                
+                                timestamp = datetime.fromtimestamp(
+                                    commit_time
+                                ).isoformat()
+
                                 checkpoint = {
                                     "id": f"checkpoint-{checkpoint_count}",
                                     "commit_sha": commit_sha,
                                     "prompt_preview": prompt_preview,
-                                    "timestamp": timestamp
+                                    "timestamp": timestamp,
                                 }
-                                
+
                                 self.checkpoints.append(checkpoint)
                                 checkpoint_count += 1
-                                
+
                             except Exception as e:
-                                self.logger.debug(f"Failed to get metadata for {commit_sha}: {e}")
-                    
+                                self.logger.debug(
+                                    f"Failed to get metadata for {commit_sha}: {e}"
+                                )
+
                 except Exception as e:
                     self.logger.error(f"Failed to load checkpoints from {wip_ref}: {e}")
-            
+
             # Save the loaded checkpoints to config
             if self.checkpoints:
                 self.save_config()
                 self.logger.info(f"Loaded {len(self.checkpoints)} checkpoints from git")
-                
+
         except Exception as e:
             self.logger.error(f"Failed to load checkpoints from git: {e}")
 

@@ -56,6 +56,7 @@ class ClaudeCLIWrapper:
         timeout: Optional[int] = None,
         verbose: bool = False,
         stream: Literal[False] = False,
+        allowed_tools: Optional[str] = None,
     ) -> ClaudeResponse: ...
 
     @overload
@@ -70,6 +71,7 @@ class ClaudeCLIWrapper:
         timeout: Optional[int] = None,
         verbose: bool = False,
         stream: Literal[True] = True,
+        allowed_tools: Optional[str] = None,
     ) -> Iterator[Dict[str, Any]]: ...
 
     def invoke(
@@ -83,6 +85,7 @@ class ClaudeCLIWrapper:
         timeout: Optional[int] = None,
         verbose: bool = False,
         stream: bool = False,
+        allowed_tools: Optional[str] = None,
     ) -> Union[ClaudeResponse, Iterator[Dict[str, Any]]]:
         """Invoke Claude CLI with enhanced options
 
@@ -96,6 +99,7 @@ class ClaudeCLIWrapper:
             timeout: Timeout in seconds
             verbose: Whether to include verbose output
             stream: Whether to stream results (only for stream-json format)
+            allowed_tools: Space-separated list of allowed tools (e.g., "Bash(git:*) Edit")
 
         Returns:
             ClaudeResponse object or iterator of JSON objects if streaming
@@ -112,13 +116,13 @@ class ClaudeCLIWrapper:
             max_tokens=max_tokens,
             system_prompt=system_prompt,
             verbose=verbose,
+            allowed_tools=allowed_tools,
         )
 
         # Execute based on streaming preference
         if stream and output_format == OutputFormat.STREAM_JSON:
             return self._invoke_streaming(cmd, timeout)
-        else:
-            return self._invoke_blocking(cmd, timeout, output_format)
+        return self._invoke_blocking(cmd, timeout, output_format)
 
     def _build_command(
         self,
@@ -129,10 +133,11 @@ class ClaudeCLIWrapper:
         max_tokens: Optional[int] = None,
         system_prompt: Optional[str] = None,
         verbose: bool = False,
+        allowed_tools: Optional[str] = None,
     ) -> List[str]:
         """Build Claude CLI command"""
         cmd = ["claude"]
-        
+
         # Add --print for non-interactive mode
         cmd.append("--print")
 
@@ -151,10 +156,14 @@ class ClaudeCLIWrapper:
         # Note: Claude CLI doesn't support temperature or max_tokens directly
         # For now, we'll only use system_prompt if provided
         # TODO: Consider including constraints in the main prompt
-        
+
         # Add system prompt using --append-system-prompt
         if system_prompt:
             cmd.extend(["--append-system-prompt", system_prompt])
+
+        # Add allowed tools if specified
+        if allowed_tools:
+            cmd.extend(["--allowedTools", allowed_tools])
 
         # Add the prompt
         cmd.extend(["-p", prompt])
@@ -170,6 +179,7 @@ class ClaudeCLIWrapper:
         try:
             result = subprocess.run(
                 cmd,
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
@@ -179,18 +189,17 @@ class ClaudeCLIWrapper:
 
             if result.returncode == 0:
                 return self._parse_response(result.stdout, output_format, duration_ms)
-            else:
-                error_msg = f"Claude CLI failed with exit code {result.returncode}"
-                if result.stderr:
-                    error_msg += f"\nStderr: {result.stderr}"
-                if result.stdout:
-                    error_msg += f"\nStdout: {result.stdout}"
-                return ClaudeResponse(
-                    success=False,
-                    error=error_msg,
-                    exit_code=result.returncode,
-                    duration_ms=duration_ms,
-                )
+            error_msg = f"Claude CLI failed with exit code {result.returncode}"
+            if result.stderr:
+                error_msg += f"\nStderr: {result.stderr}"
+            if result.stdout:
+                error_msg += f"\nStdout: {result.stdout}"
+            return ClaudeResponse(
+                success=False,
+                error=error_msg,
+                exit_code=result.returncode,
+                duration_ms=duration_ms,
+            )
 
         except subprocess.TimeoutExpired:
             duration_ms = int((time.time() - start_time) * 1000)
@@ -207,7 +216,7 @@ class ClaudeCLIWrapper:
         except Exception as e:
             return ClaudeResponse(
                 success=False,
-                error=f"Unexpected error: {str(e)}",
+                error=f"Unexpected error: {e!s}",
             )
 
     def _invoke_streaming(
@@ -257,7 +266,7 @@ class ClaudeCLIWrapper:
         except Exception as e:
             yield {
                 "type": "error",
-                "error": f"Unexpected error: {str(e)}",
+                "error": f"Unexpected error: {e!s}",
             }
 
     def _parse_response(
@@ -271,19 +280,19 @@ class ClaudeCLIWrapper:
                 duration_ms=duration_ms,
             )
 
-        elif output_format == OutputFormat.JSON:
+        if output_format == OutputFormat.JSON:
             try:
                 data = json.loads(output.strip())
-                
+
                 # Extract content from different possible locations
                 content = data.get("content") or data.get("result")
-                
+
                 # Extract model info
                 model = data.get("model")
-                
+
                 # Extract usage info
                 usage = data.get("usage")
-                
+
                 return ClaudeResponse(
                     success=True,
                     content=content,

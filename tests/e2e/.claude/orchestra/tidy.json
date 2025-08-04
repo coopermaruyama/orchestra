@@ -1,0 +1,54 @@
+{
+  "project_info": {
+    "type": "python",
+    "package_manager": "unknown",
+    "config_files": [],
+    "source_files": []
+  },
+  "detected_tools": {
+    "linter": {
+      "name": "ruff",
+      "command": "ruff check .",
+      "fix_command": "ruff check . --fix",
+      "config_file": "pyproject.toml",
+      "version": "0.12.7",
+      "is_available": true
+    },
+    "formatter": {
+      "name": "black",
+      "command": "black . --check",
+      "fix_command": "black .",
+      "config_file": "pyproject.toml",
+      "version": "25.1.0",
+      "is_available": true
+    },
+    "type_checker": {
+      "name": "mypy",
+      "command": "mypy src/",
+      "fix_command": null,
+      "config_file": "mypy.ini",
+      "version": "1.17.1",
+      "is_available": true
+    }
+  },
+  "custom_commands": [],
+  "do_examples": [],
+  "dont_examples": [],
+  "last_check": {},
+  "settings": {
+    "auto_fix": false,
+    "strict_mode": true,
+    "check_on_file_change": true,
+    "ignore_patterns": [
+      "*_test.py",
+      "migrations/*",
+      "node_modules/*",
+      "*.min.js"
+    ],
+    "max_issues_shown": 10,
+    "parallel_execution": true,
+    "check_timeout": 60,
+    "use_sidecar": false
+  },
+  "updated": "2025-08-04T08:17:45.630406"
+}

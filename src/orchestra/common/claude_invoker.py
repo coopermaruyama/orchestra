@@ -1,20 +1,23 @@
 """
 Claude Invoker - Core functionality for invoking Claude in various contexts
 
-Provides a unified interface for invoking Claude both within Claude Code
-environment and via external CLI, with support for different models and
-context configurations.
+Provides a unified interface for invoking Claude using the Python SDK
+with support for different models and context configurations.
 """
 
+import asyncio
 import json
 import os
 import re
 import subprocess
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Union
+
+from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions, AssistantMessage, TextBlock, ResultMessage
 
 
 class ClaudeInvoker:
-    """Manages Claude invocations across different environments"""
+    """Manages Claude invocations using the Python SDK"""
 
     # Model aliases for different use cases
     MODELS = {
@@ -27,7 +30,7 @@ class ClaudeInvoker:
 
     def __init__(self) -> None:
         """Initialize Claude invoker"""
-        self.is_claude_code = os.environ.get("CLAUDECODE") == "1"
+        pass
 
     def invoke_claude(
         self,
@@ -38,6 +41,7 @@ class ClaudeInvoker:
         temperature: Optional[float] = None,
         max_tokens: Optional[int] = None,
         include_git_diff: bool = False,
+        allowed_tools: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Invoke Claude with the given prompt and configuration
 
@@ -49,31 +53,87 @@ class ClaudeInvoker:
             temperature: Temperature for response generation
             max_tokens: Maximum tokens in response
             include_git_diff: Whether to include current git diff in context
+            allowed_tools: Space-separated list of allowed tools (e.g., "Bash(git:*) Edit")
 
         Returns:
             Response dict with 'success', 'response', and other metadata
         """
-        # Resolve model alias
-        if model and model in self.MODELS:
-            model = self.MODELS[model]
+        try:
+            # Resolve model alias
+            if model and model in self.MODELS:
+                model = self.MODELS[model]
 
-        # Build the full prompt with context
-        full_prompt = self._build_full_prompt(
-            prompt=prompt,
-            system_prompt=system_prompt,
-            context=context,
-            include_git_diff=include_git_diff,
-        )
+            # Build the full prompt with context
+            full_prompt = self._build_full_prompt(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                context=context,
+                include_git_diff=include_git_diff,
+            )
 
-        # Invoke based on environment
-        if self.is_claude_code:
-            return self._invoke_claude_code(full_prompt, model)
-        return self._invoke_external_claude(
-            prompt=full_prompt,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-        )
+            # Configure options
+            options = ClaudeCodeOptions()
+            if model:
+                options.model = model
+            if system_prompt:
+                options.system_prompt = system_prompt
+
+            # Use the ClaudeSDKClient for better control
+            import asyncio
+            
+            async def run_query():
+                response_text = ""
+                messages = []
+                cost_info = {}
+
+                async with ClaudeSDKClient(options) as client:
+                    # Send the query
+                    await client.query(full_prompt)
+                    
+                    # Receive all messages in the response
+                    async for message in client.receive_response():
+                        messages.append(message)
+                        if isinstance(message, AssistantMessage):
+                            for block in message.content:
+                                if isinstance(block, TextBlock):
+                                    response_text += block.text
+                        elif isinstance(message, ResultMessage):
+                            cost_info = {
+                                "duration_ms": message.duration_ms,
+                                "duration_api_ms": message.duration_api_ms,
+                                "total_cost_usd": message.total_cost_usd,
+                            }
+
+                return {
+                    "success": True,
+                    "response": response_text.strip(),
+                    "method": "python_sdk_client",
+                    "model": model,
+                    "messages": messages,
+                    "cost_info": cost_info,
+                }
+
+            # Try to run in new loop
+            try:
+                return asyncio.run(run_query())
+            except RuntimeError as e:
+                if "cannot be called from a running event loop" in str(e):
+                    # We're in an async context, run in thread
+                    with ThreadPoolExecutor() as executor:
+                        future = executor.submit(lambda: asyncio.run(run_query()))
+                        return future.result()
+                else:
+                    raise
+
+        except Exception as e:
+            import traceback
+            return {
+                "success": False,
+                "error": f"SDK invocation failed: {e!s}",
+                "traceback": traceback.format_exc(),
+                "method": "python_sdk",
+            }
+
 
     def check_predicate(
         self,
@@ -115,10 +175,10 @@ REASONING: [Brief explanation]
 
         system_prompt = """You are a precise evaluation assistant. You answer yes/no questions based on provided context. Be decisive but accurate."""
 
-        # Use fast model for predicates
+        # Use default model for predicates (fast model has token limit issues)
         result = self.invoke_claude(
             prompt=predicate_prompt,
-            model="fast",
+            model=None,  # Use default model to avoid token limits
             system_prompt=system_prompt,
             context=context,
             include_git_diff=include_git_diff,
@@ -180,7 +240,8 @@ REASONING: [Brief explanation]
         try:
             result = subprocess.run(
                 ["git", "diff", "--staged", "HEAD"],
-                check=False, capture_output=True,
+                check=False,
+                capture_output=True,
                 text=True,
                 timeout=5,
             )
@@ -214,77 +275,6 @@ REASONING: [Brief explanation]
 
         except Exception:
             return None
-
-    def _invoke_claude_code(
-        self, prompt: str, model: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Invoke Claude within Claude Code environment"""
-        # In Claude Code, we simulate a response for testing/development
-        # In production, this would be handled by the Task tool
-        return {
-            "method": "task_tool",
-            "prompt": prompt,
-            "model": model,
-            "message": "Use Task tool with this prompt in Claude Code",
-            "success": True,
-            "response": "ANSWER: NO\nCONFIDENCE: 0.9\nREASONING: Claude Code environment - use Task tool for actual analysis",
-        }
-
-    def _invoke_external_claude(
-        self,
-        prompt: str,
-        model: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """Invoke external Claude via CLI"""
-        try:
-            # Build command
-            cmd = ["claude"]
-
-            # Add model if specified
-            if model:
-                cmd.extend(["--model", model])
-
-            # Add temperature if specified
-            if temperature is not None:
-                cmd.extend(["--temperature", str(temperature)])
-
-            # Add max tokens if specified
-            if max_tokens is not None:
-                cmd.extend(["--max-tokens", str(max_tokens)])
-
-            # Add prompt
-            cmd.extend(["-p", prompt])
-
-            # Execute with longer timeout for complex queries
-            result = subprocess.run(cmd, check=False, capture_output=True, text=True, timeout=300)  # 5 minutes
-
-            if result.returncode == 0:
-                return {
-                    "success": True,
-                    "response": result.stdout.strip(),
-                    "method": "external_claude",
-                    "model": model,
-                }
-            return {
-                "success": False,
-                "error": f"Claude CLI failed with return code {result.returncode}",
-                "stderr": result.stderr,
-            }
-
-        except subprocess.TimeoutExpired:
-            return {"success": False, "error": "Claude CLI call timed out"}
-        except FileNotFoundError:
-            return {
-                "success": False,
-                "error": "Claude CLI not found. Please ensure claude is installed and in PATH.",
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"Unexpected error calling Claude CLI: {e!s}",
-            }
 
     def _parse_predicate_response(
         self, response: str, confidence_threshold: float

@@ -66,7 +66,7 @@ class TidySidecarCommand(CoreCommand):
             return {
                 "success": False,
                 "error": "Sidecar is already running",
-                "pid": self._get_sidecar_pid()
+                "pid": self._get_sidecar_pid(),
             }
 
         # Get current working directory
@@ -90,7 +90,7 @@ class TidySidecarCommand(CoreCommand):
                 "working_dir": working_dir,
                 "worktree_path": str(worktree_path),
                 "worktree_name": worktree_name,
-                "status": "running"
+                "status": "running",
             }
             self._save_state(state)
 
@@ -98,7 +98,7 @@ class TidySidecarCommand(CoreCommand):
                 "success": True,
                 "pid": pid,
                 "worktree_path": str(worktree_path),
-                "message": "Sidecar daemon started successfully"
+                "message": "Sidecar daemon started successfully",
             }
 
         except Exception as e:
@@ -106,13 +106,11 @@ class TidySidecarCommand(CoreCommand):
             # Cleanup worktree if created
             if worktree_path.exists():
                 self._remove_worktree(working_dir, worktree_path)
-            return {
-                "success": False,
-                "error": f"Failed to start sidecar: {e!s}"
-            }
+            return {"success": False, "error": f"Failed to start sidecar: {e!s}"}
 
-    def _spawn_daemon(self, working_dir: str, worktree_path: Path,
-                     input_data: Dict[str, Any]) -> int:
+    def _spawn_daemon(
+        self, working_dir: str, worktree_path: Path, input_data: Dict[str, Any]
+    ) -> int:
         """Spawn the daemon process"""
         # Python code to run in daemon
         daemon_code = f"""
@@ -199,19 +197,21 @@ with open(ready_file, 'w') as f:
             start_new_session=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
-            stdin=subprocess.DEVNULL
+            stdin=subprocess.DEVNULL,
         )
 
         return process.pid
 
-    def _create_worktree(self, working_dir: str, worktree_path: Path,
-                        worktree_name: str) -> None:
+    def _create_worktree(
+        self, working_dir: str, worktree_path: Path, worktree_name: str
+    ) -> None:
         """Create a git worktree"""
         # First check if we're in a git repo
         result = subprocess.run(
             ["git", "rev-parse", "--git-dir"],
-            check=False, cwd=working_dir,
-            capture_output=True
+            check=False,
+            cwd=working_dir,
+            capture_output=True,
         )
         if result.returncode != 0:
             msg = "Not in a git repository"
@@ -220,9 +220,10 @@ with open(ready_file, 'w') as f:
         # Create worktree
         result = subprocess.run(
             ["git", "worktree", "add", "-b", worktree_name, str(worktree_path)],
-            check=False, cwd=working_dir,
+            check=False,
+            cwd=working_dir,
             capture_output=True,
-            text=True
+            text=True,
         )
         if result.returncode != 0:
             msg = f"Failed to create worktree: {result.stderr}"
@@ -233,8 +234,9 @@ with open(ready_file, 'w') as f:
         try:
             subprocess.run(
                 ["git", "worktree", "remove", str(worktree_path), "--force"],
-                check=False, cwd=working_dir,
-                capture_output=True
+                check=False,
+                cwd=working_dir,
+                capture_output=True,
             )
         except Exception as e:
             self.logger.warning(f"Failed to remove worktree: {e}")
@@ -272,7 +274,7 @@ with open(ready_file, 'w') as f:
             return {
                 "success": True,
                 "status": "not_running",
-                "message": "No sidecar process found"
+                "message": "No sidecar process found",
             }
 
         # Check if ready file exists
@@ -285,7 +287,7 @@ with open(ready_file, 'w') as f:
                 "status": "completed",
                 "state": state,
                 "results": ready_data,
-                "message": "Sidecar has completed fixes"
+                "message": "Sidecar has completed fixes",
             }
 
         # Check if still running
@@ -294,24 +296,21 @@ with open(ready_file, 'w') as f:
                 "success": True,
                 "status": "running",
                 "state": state,
-                "message": "Sidecar is still running"
+                "message": "Sidecar is still running",
             }
 
         return {
             "success": True,
             "status": "stopped",
             "state": state,
-            "message": "Sidecar has stopped without completing"
+            "message": "Sidecar has stopped without completing",
         }
 
     def _stop_sidecar(self) -> Dict[str, Any]:
         """Stop the sidecar daemon"""
         state = self._load_state()
         if not state:
-            return {
-                "success": True,
-                "message": "No sidecar process to stop"
-            }
+            return {"success": True, "message": "No sidecar process to stop"}
 
         pid = state.get("pid")
         if pid:
@@ -346,27 +345,18 @@ with open(ready_file, 'w') as f:
         if self.sidecar_ready_file.exists():
             self.sidecar_ready_file.unlink()
 
-        return {
-            "success": True,
-            "message": "Sidecar stopped successfully"
-        }
+        return {"success": True, "message": "Sidecar stopped successfully"}
 
     def _merge_sidecar_fixes(self) -> Dict[str, Any]:
         """Merge fixes from sidecar worktree"""
         if not self.sidecar_ready_file.exists():
-            return {
-                "success": False,
-                "error": "No completed sidecar fixes found"
-            }
+            return {"success": False, "error": "No completed sidecar fixes found"}
 
         with self.sidecar_ready_file.open() as f:
             ready_data = json.load(f)
 
         if not ready_data.get("has_changes"):
-            return {
-                "success": True,
-                "message": "No changes to merge"
-            }
+            return {"success": True, "message": "No changes to merge"}
 
         state = self._load_state()
         worktree_path = Path(ready_data["worktree_path"])
@@ -392,23 +382,28 @@ with open(ready_file, 'w') as f:
             return {
                 "success": True,
                 "files_updated": len(changed_files),
-                "message": f"Merged {len(changed_files)} files from sidecar"
+                "message": f"Merged {len(changed_files)} files from sidecar",
             }
 
         except Exception as e:
             self.logger.exception("Failed to merge sidecar fixes")
-            return {
-                "success": False,
-                "error": f"Failed to merge fixes: {e!s}"
-            }
+            return {"success": False, "error": f"Failed to merge fixes: {e!s}"}
 
     def _get_changed_files(self, working_dir: str, worktree_path: Path) -> List[str]:
         """Get list of changed files between directories"""
         result = subprocess.run(
-            ["git", "diff", "--name-only", "--no-index", working_dir, str(worktree_path)],
-            check=False, capture_output=True,
+            [
+                "git",
+                "diff",
+                "--name-only",
+                "--no-index",
+                working_dir,
+                str(worktree_path),
+            ],
+            check=False,
+            capture_output=True,
             text=True,
-            cwd=working_dir
+            cwd=working_dir,
         )
 
         if result.returncode == 0:
@@ -446,6 +441,8 @@ with open(ready_file, 'w') as f:
         """Not used for sidecar command"""
         return ""
 
-    def parse_response(self, response: Any, original_content: str = "") -> Dict[str, Any]:  # noqa: ARG002
+    def parse_response(
+        self, response: Any, original_content: str = ""
+    ) -> Dict[str, Any]:  # noqa: ARG002
         """Not used for sidecar command"""
         return {}

@@ -4,11 +4,11 @@ Tests for enhanced Claude CLI wrapper
 
 import json
 import os
-import pytest
-from unittest.mock import Mock, patch, MagicMock
 import subprocess
+from unittest.mock import MagicMock, Mock, patch
 
-from typing import cast, Iterator, Dict, Any
+import pytest
+
 from orchestra.common.claude_cli_wrapper import (
     ClaudeCLIWrapper,
     ClaudeResponse,

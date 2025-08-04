@@ -3,6 +3,7 @@
 import os
 import platform
 import subprocess
+
 import click
 from rich.console import Console
 
@@ -10,13 +11,15 @@ console = Console()
 
 
 @click.command()
-@click.argument('extension', required=False)
-@click.option('--tail', '-f', is_flag=True, help='Follow log output')
-@click.option('--clear', is_flag=True, help='Clear all Orchestra logs')
-@click.option('--no-truncate', is_flag=True, help='Show full log values without truncation')
+@click.argument("extension", required=False)
+@click.option("--tail", "-f", is_flag=True, help="Follow log output")
+@click.option("--clear", is_flag=True, help="Clear all Orchestra logs")
+@click.option(
+    "--no-truncate", is_flag=True, help="Show full log values without truncation"
+)
 def logs(extension, tail, clear, no_truncate):
     """View or manage extension logs
-    
+
     Examples:
         orchestra logs              # View all logs
         orchestra logs task         # View task monitor logs
@@ -36,28 +39,32 @@ def logs(extension, tail, clear, no_truncate):
             log_patterns.append("tester.log")
         else:
             console.print(f"[bold red]❌ Unknown extension:[/bold red] {extension}")
-            console.print("[dim]Valid extensions: task, timemachine, tidy, tester[/dim]")
+            console.print(
+                "[dim]Valid extensions: task, timemachine, tidy, tester[/dim]"
+            )
             return
     else:
         # Look for all Orchestra logs
-        log_patterns.extend(["task_monitor.log", "timemachine.log", "tidy.log", "tester.log"])
-    
+        log_patterns.extend(
+            ["task_monitor.log", "timemachine.log", "tidy.log", "tester.log"]
+        )
+
     # Search for log files in common temp directories
     log_files = []
     temp_roots = []
-    
+
     if platform.system() == "Darwin":  # macOS
         temp_roots.extend(["/var/folders", "/tmp"])
     elif platform.system() == "Linux":
         temp_roots.extend(["/tmp", "/var/tmp"])
     elif platform.system() == "Windows":
         temp_roots.extend([os.environ.get("TEMP", ""), os.environ.get("TMP", "")])
-    
+
     # Find log files
     for root in temp_roots:
         if not root or not os.path.exists(root):
             continue
-        
+
         try:
             # Use find command for efficiency
             for pattern in log_patterns:
@@ -65,26 +72,32 @@ def logs(extension, tail, clear, no_truncate):
                     cmd = ["where", "/r", root, pattern]
                 else:
                     cmd = ["find", root, "-name", pattern, "-type", "f"]
-                
-                result = subprocess.run(cmd, capture_output=True, text=True, stderr=subprocess.DEVNULL)
+
+                result = subprocess.run(
+                    cmd,
+                    check=False,
+                    capture_output=True,
+                    text=True,
+                    stderr=subprocess.DEVNULL,
+                )
                 if result.returncode == 0 and result.stdout:
-                    files = result.stdout.strip().split('\n')
+                    files = result.stdout.strip().split("\n")
                     log_files.extend([f for f in files if f and os.path.exists(f)])
         except Exception:
             pass
-    
+
     # Remove duplicates
     log_files = list(set(log_files))
-    
+
     if clear:
         if not log_files:
             console.print("[yellow]No Orchestra logs found to clear.[/yellow]")
             return
-        
+
         console.print(f"[bold yellow]Found {len(log_files)} log file(s):[/bold yellow]")
         for log_file in log_files:
             console.print(f"  [dim]-[/dim] {log_file}")
-        
+
         console.print("\n[bold red]⚠️  This will delete all Orchestra logs.[/bold red]")
         if click.confirm("Continue?"):
             cleared = 0
@@ -94,38 +107,50 @@ def logs(extension, tail, clear, no_truncate):
                     cleared += 1
                 except Exception as e:
                     console.print(f"[red]Failed to delete {log_file}: {e}[/red]")
-            
+
             console.print(f"[bold green]✅ Cleared {cleared} log file(s)[/bold green]")
         else:
             console.print("[yellow]Cancelled.[/yellow]")
         return
-    
+
     if not log_files:
         console.print("[yellow]No Orchestra logs found.[/yellow]")
-        console.print("[dim]Logs are created when extensions are used in Claude Code.[/dim]")
-        console.print("[dim]Try running a command first, e.g., 'orchestra task status'[/dim]")
+        console.print(
+            "[dim]Logs are created when extensions are used in Claude Code.[/dim]"
+        )
+        console.print(
+            "[dim]Try running a command first, e.g., 'orchestra task status'[/dim]"
+        )
         return
-    
+
     # Display or tail logs
     if tail:
-        console.print(f"[bold green]📜 Following {len(log_files)} log file(s):[/bold green]")
+        console.print(
+            f"[bold green]📜 Following {len(log_files)} log file(s):[/bold green]"
+        )
         for log_file in log_files:
             console.print(f"  [dim]-[/dim] {log_file}")
         console.print("\n[dim]Press Ctrl+C to stop...[/dim]\n")
-        
+
         try:
             if platform.system() == "Windows":
-                cmd = ["powershell", "-Command", f"Get-Content {' '.join(log_files)} -Wait"]
+                cmd = [
+                    "powershell",
+                    "-Command",
+                    f"Get-Content {' '.join(log_files)} -Wait",
+                ]
             else:
                 cmd = ["tail", "-f"] + log_files
-            
-            subprocess.run(cmd)
+
+            subprocess.run(cmd, check=False)
         except KeyboardInterrupt:
             console.print("\n[yellow]Stopped tailing logs.[/yellow]")
     else:
         # Display logs with nice formatting
-        console.print(f"[bold green]📜 Orchestra Logs[/bold green] ({len(log_files)} file(s) found)\n")
-        
+        console.print(
+            f"[bold green]📜 Orchestra Logs[/bold green] ({len(log_files)} file(s) found)\n"
+        )
+
         for log_file in log_files:
             # Extract extension name from log file
             if "task_monitor.log" in log_file:
@@ -143,24 +168,29 @@ def logs(extension, tail, clear, no_truncate):
             else:
                 ext_name = "Unknown"
                 ext_color = "white"
-            
+
             console.print(f"[bold {ext_color}]═══ {ext_name} ═══[/bold {ext_color}]")
             console.print(f"[dim]{log_file}[/dim]")
-            
+
             try:
-                with open(log_file, 'r') as f:
+                with open(log_file) as f:
                     lines = f.readlines()
                     if len(lines) > 50:
-                        console.print(f"[dim]... showing last 50 lines (file has {len(lines)} total) ...[/dim]")
+                        console.print(
+                            f"[dim]... showing last 50 lines (file has {len(lines)} total) ...[/dim]"
+                        )
                         lines = lines[-50:]
-                    
+
                     for line in lines:
                         line = line.rstrip()
-                        
+
                         # If no_truncate is False and line contains [truncated], show a hint
                         if not no_truncate and "[truncated]" in line:
-                            line = line.replace("[truncated]", "[truncated - use --no-truncate to see full]")
-                        
+                            line = line.replace(
+                                "[truncated]",
+                                "[truncated - use --no-truncate to see full]",
+                            )
+
                         # Color code log levels
                         if "ERROR" in line or "CRITICAL" in line:
                             console.print(f"[red]{line}[/red]")
@@ -172,12 +202,16 @@ def logs(extension, tail, clear, no_truncate):
                             console.print(f"[blue]{line}[/blue]")
                         else:
                             console.print(line)
-                
+
             except Exception as e:
                 console.print(f"[red]Error reading log: {e}[/red]")
-            
+
             console.print()  # Empty line between logs
-        
-        console.print("[dim]Tip: Use 'orchestra logs --tail' to follow logs in real-time[/dim]")
+
+        console.print(
+            "[dim]Tip: Use 'orchestra logs --tail' to follow logs in real-time[/dim]"
+        )
         if not no_truncate:
-            console.print("[dim]     Use 'orchestra logs --no-truncate' to see full log values[/dim]")
+            console.print(
+                "[dim]     Use 'orchestra logs --no-truncate' to see full log values[/dim]"
+            )

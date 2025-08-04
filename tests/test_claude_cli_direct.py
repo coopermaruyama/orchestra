@@ -2,10 +2,11 @@
 Test running Claude CLI directly with specific parameters
 """
 
-import pytest
-import subprocess
 import json
 import os
+import subprocess
+
+import pytest
 
 
 class TestClaudeCLIDirect:
@@ -31,6 +32,7 @@ class TestClaudeCLIDirect:
         try:
             result = subprocess.run(
                 cmd,
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=120,  # Increased to 2 minutes
@@ -83,6 +85,7 @@ class TestClaudeCLIDirect:
             try:
                 result = subprocess.run(
                     cmd,
+                    check=False,
                     capture_output=True,
                     text=True,
                     timeout=120,  # Increased to 2 minutes
@@ -107,7 +110,9 @@ class TestClaudeCLIDirect:
         cmd = ["claude", "--invalid-option", "-p", "test"]
 
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            result = subprocess.run(
+                cmd, check=False, capture_output=True, text=True, timeout=5
+            )
 
             # Should fail with non-zero exit code
             assert result.returncode != 0
@@ -146,6 +151,7 @@ class TestClaudeCLIDirect:
         try:
             result = subprocess.run(
                 cmd,
+                check=False,
                 capture_output=True,
                 text=True,
                 timeout=120,  # Increased to 2 minutes
@@ -183,6 +189,7 @@ def test_simple_claude_invocation() -> None:
     try:
         result = subprocess.run(
             cmd,
+            check=False,
             capture_output=True,
             text=True,
             timeout=120,  # Increased to 2 minutes

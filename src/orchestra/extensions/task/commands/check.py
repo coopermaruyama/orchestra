@@ -70,10 +70,7 @@ Return a JSON response with: deviation_detected (bool), deviation_type (string o
         forbidden = memory.get("forbidden_patterns", [])
 
         # Keep it minimal and focused
-        prompt_parts = [
-            "You are a task deviation analyzer.",
-            f"Current task: {task}"
-        ]
+        prompt_parts = ["You are a task deviation analyzer.", f"Current task: {task}"]
 
         if requirements:
             req_list = ", ".join(requirements[:5])  # Limit to 5 requirements
@@ -87,7 +84,9 @@ Return a JSON response with: deviation_detected (bool), deviation_type (string o
                 forbidden_list += f" (and {len(forbidden) - 3} more)"
             prompt_parts.append(f"Forbidden: {forbidden_list}")
 
-        prompt_parts.append("\nOutput JSON with: deviation_detected, deviation_type, severity, recommendation, specific_issues")
+        prompt_parts.append(
+            "\nOutput JSON with: deviation_detected, deviation_type, severity, recommendation, specific_issues"
+        )
 
         return "\n".join(prompt_parts)
 
@@ -103,7 +102,7 @@ Return a JSON response with: deviation_detected (bool), deviation_type (string o
                 "deviation_type": None,
                 "severity": "low",
                 "recommendation": "Unable to parse recommendation",
-                "specific_issues": []
+                "specific_issues": [],
             }
 
             # Merge with defaults
@@ -111,10 +110,15 @@ Return a JSON response with: deviation_detected (bool), deviation_type (string o
                 if key not in result:
                     result[key] = default
 
-            # Validate deviation_type
+            # Validate deviation_type and normalize hyphens to underscores
+            if result["deviation_type"] and isinstance(result["deviation_type"], str):
+                result["deviation_type"] = result["deviation_type"].replace("-", "_")
+
             valid_types = ["scope_creep", "over_engineering", "off_topic", None]
             if result["deviation_type"] not in valid_types:
-                self.logger.warning(f"Invalid deviation type: {result['deviation_type']}")
+                self.logger.warning(
+                    f"Invalid deviation type: {result['deviation_type']}"
+                )
                 result["deviation_type"] = None
 
             # Validate severity
@@ -136,6 +140,5 @@ Return a JSON response with: deviation_detected (bool), deviation_type (string o
                 "severity": "low",
                 "recommendation": "Unable to analyze due to parsing error",
                 "specific_issues": [],
-                "error": f"Failed to parse response: {e!s}"
+                "error": f"Failed to parse response: {e!s}",
             }
-

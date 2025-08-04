@@ -93,7 +93,7 @@ Return JSON with: tests_needed (array of test objects), suggested_commands (arra
 
         prompt_parts = [
             f"You are a test requirement analyzer specializing in {framework}.",
-            f"Target coverage: {int(coverage_req * 100)}%"
+            f"Target coverage: {int(coverage_req * 100)}%",
         ]
 
         # Add test patterns if available
@@ -113,12 +113,14 @@ Return JSON with: tests_needed (array of test objects), suggested_commands (arra
         if calibration.get("assertion_style"):
             prompt_parts.append(f"Assertion style: {calibration['assertion_style']}")
 
-        prompt_parts.append("""
+        prompt_parts.append(
+            """
 Output JSON with:
 - tests_needed: array of {file, test_name, test_type, reason}
 - suggested_commands: array of test commands to run
 - coverage_gaps: array of untested scenarios
-- existing_tests_to_update: array of test files needing updates""")
+- existing_tests_to_update: array of test files needing updates"""
+        )
 
         return "\n".join(prompt_parts)
 
@@ -133,7 +135,7 @@ Output JSON with:
                 "tests_needed": [],
                 "suggested_commands": [],
                 "coverage_gaps": [],
-                "existing_tests_to_update": []
+                "existing_tests_to_update": [],
             }
 
             for key, default in expected_fields.items():
@@ -155,7 +157,11 @@ Output JSON with:
                 result["tests_needed"] = valid_tests
 
             # Ensure other fields are lists
-            for field in ["suggested_commands", "coverage_gaps", "existing_tests_to_update"]:
+            for field in [
+                "suggested_commands",
+                "coverage_gaps",
+                "existing_tests_to_update",
+            ]:
                 if not isinstance(result.get(field), list):
                     result[field] = []
 
@@ -168,6 +174,5 @@ Output JSON with:
                 "suggested_commands": [],
                 "coverage_gaps": [],
                 "existing_tests_to_update": [],
-                "error": f"Failed to parse response: {e!s}"
+                "error": f"Failed to parse response: {e!s}",
             }
-

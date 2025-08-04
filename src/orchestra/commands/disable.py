@@ -9,8 +9,10 @@ console = Console()
 
 
 @click.command()
-@click.argument('extension')
-@click.option('--project', is_flag=True, help='Disable from project scope instead of global')
+@click.argument("extension")
+@click.option(
+    "--project", is_flag=True, help="Disable from project scope instead of global"
+)
 def disable(extension, project):
     """Disable an Orchestra extension"""
     orchestra = Orchestra()

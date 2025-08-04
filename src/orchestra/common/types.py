@@ -5,16 +5,20 @@ from typing import TypedDict, Union
 @dataclass
 class Todo(TypedDict):
     """Data structure for tool input in a todo context"""
+
     content: str
     status: str
     priority: str
     id: str
     hook_event_name: str
 
+
 @dataclass
 class TodoInput(TypedDict):
     """Data structure for tool input in a todo context"""
+
     todos: list[Todo]
+
 
 ToolInput = Union[TodoInput]
 
@@ -41,6 +45,7 @@ ToolInput = Union[TodoInput]
 
 class HookInput(TypedDict):
     """Base class for hook input data"""
+
     session_id: str
     transcript_path: str
     cwd: str
