@@ -5,7 +5,6 @@ Provides a unified interface for invoking Claude using the Python SDK
 with support for different models and context configurations.
 """
 
-import asyncio
 import json
 import os
 import re
@@ -14,7 +13,13 @@ import tempfile
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Union
 
-from claude_code_sdk import ClaudeSDKClient, ClaudeCodeOptions, AssistantMessage, TextBlock, ResultMessage
+from claude_code_sdk import (
+    AssistantMessage,
+    ClaudeCodeOptions,
+    ClaudeSDKClient,
+    ResultMessage,
+    TextBlock,
+)
 
 
 class ClaudeInvoker:
@@ -31,7 +36,6 @@ class ClaudeInvoker:
 
     def __init__(self) -> None:
         """Initialize Claude invoker"""
-        pass
 
     def invoke_claude(
         self,
@@ -78,22 +82,24 @@ class ClaudeInvoker:
                     "pre_command": [],
                     "post_command": [],
                     "prompt": [],
-                    "file_change": []
+                    "file_change": [],
                 }
             }
-            
+
             # Write to temporary file
-            with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+            with tempfile.NamedTemporaryFile(
+                mode="w", suffix=".json", delete=False
+            ) as f:
                 json.dump(temp_settings, f)
                 temp_settings_path = f.name
-            
+
             # Configure options
             options = ClaudeCodeOptions()
             if model:
                 options.model = model
             if system_prompt:
                 options.system_prompt = system_prompt
-            
+
             # Override settings to disable all hooks for external Claude instances
             # This prevents the external Claude from also having tidy extensions applied
             options.settings = temp_settings_path
@@ -101,42 +107,42 @@ class ClaudeInvoker:
             # Set environment variable to prevent recursive calls
             original_env = os.environ.get("ORCHESTRA_CLAUDE_INVOCATION")
             os.environ["ORCHESTRA_CLAUDE_INVOCATION"] = "1"
-            
+
             try:
                 # Use the ClaudeSDKClient for better control
                 import asyncio
-                
+
                 async def run_query():
-                response_text = ""
-                messages = []
-                cost_info = {}
+                    response_text = ""
+                    messages = []
+                    cost_info = {}
 
-                async with ClaudeSDKClient(options) as client:
-                    # Send the query
-                    await client.query(full_prompt)
-                    
-                    # Receive all messages in the response
-                    async for message in client.receive_response():
-                        messages.append(message)
-                        if isinstance(message, AssistantMessage):
-                            for block in message.content:
-                                if isinstance(block, TextBlock):
-                                    response_text += block.text
-                        elif isinstance(message, ResultMessage):
-                            cost_info = {
-                                "duration_ms": message.duration_ms,
-                                "duration_api_ms": message.duration_api_ms,
-                                "total_cost_usd": message.total_cost_usd,
-                            }
+                    async with ClaudeSDKClient(options) as client:
+                        # Send the query
+                        await client.query(full_prompt)
 
-                return {
-                    "success": True,
-                    "response": response_text.strip(),
-                    "method": "python_sdk_client",
-                    "model": model,
-                    "messages": messages,
-                    "cost_info": cost_info,
-                }
+                        # Receive all messages in the response
+                        async for message in client.receive_response():
+                            messages.append(message)
+                            if isinstance(message, AssistantMessage):
+                                for block in message.content:
+                                    if isinstance(block, TextBlock):
+                                        response_text += block.text
+                            elif isinstance(message, ResultMessage):
+                                cost_info = {
+                                    "duration_ms": message.duration_ms,
+                                    "duration_api_ms": message.duration_api_ms,
+                                    "total_cost_usd": message.total_cost_usd,
+                                }
+
+                    return {
+                        "success": True,
+                        "response": response_text.strip(),
+                        "method": "python_sdk_client",
+                        "model": model,
+                        "messages": messages,
+                        "cost_info": cost_info,
+                    }
 
                 # Try to run in new loop
                 try:
@@ -149,14 +155,14 @@ class ClaudeInvoker:
                             return future.result()
                     else:
                         raise
-            
+
             finally:
                 # Clean up environment variable
                 if original_env is None:
                     os.environ.pop("ORCHESTRA_CLAUDE_INVOCATION", None)
                 else:
                     os.environ["ORCHESTRA_CLAUDE_INVOCATION"] = original_env
-                
+
                 # Clean up temporary settings file
                 try:
                     os.unlink(temp_settings_path)
@@ -165,13 +171,13 @@ class ClaudeInvoker:
 
         except Exception as e:
             import traceback
+
             return {
                 "success": False,
                 "error": f"SDK invocation failed: {e!s}",
                 "traceback": traceback.format_exc(),
                 "method": "python_sdk",
             }
-
 
     def check_predicate(
         self,

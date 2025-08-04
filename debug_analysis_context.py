@@ -64,7 +64,7 @@ def main() -> None:
     else:
         print(f"Error: Task file not found: {task_file}")
         print("Use --create-test to create a test task state")
-        return 1
+        sys.exit(1)
 
     # Build and display the analysis context
     print("\n" + "=" * 60)
@@ -79,7 +79,7 @@ def main() -> None:
 
     # Optionally save to file
     output_file = task_file.with_suffix(".context.txt")
-    with open(output_file, "w") as f:
+    with output_file.open("w") as f:
         f.write(context)
     print(f"Context saved to: {output_file}")
 

@@ -26,7 +26,7 @@ class GitTaskManager:
         self.working_dir = working_dir or os.getcwd()
         self.branch_prefix = "task-monitor"
 
-    def _run_git_command(self, args: List[str]) -> subprocess.CompletedProcess:
+    def _run_git_command(self, args: List[str]) -> subprocess.CompletedProcess[str]:
         """Run git command in working directory"""
         return subprocess.run(
             ["git"] + args,
@@ -36,7 +36,7 @@ class GitTaskManager:
             check=True,
         )
 
-    def _run_git_wip_command(self, args: List[str]) -> subprocess.CompletedProcess:
+    def _run_git_wip_command(self, args: List[str]) -> subprocess.CompletedProcess[str]:
         """Run git-wip command in working directory"""
         return subprocess.run(
             args, cwd=self.working_dir, capture_output=True, text=True, check=True
@@ -197,7 +197,7 @@ class GitTaskManager:
             result = self._run_git_command(
                 ["diff", f"{task_state.base_sha}..{target_sha}"]
             )
-        return result.stdout
+        return result.stdout.strip()
 
     def get_task_file_changes(
         self, task_state: GitTaskState, target_sha: Optional[str] = None
@@ -400,7 +400,7 @@ class GitTaskManager:
         result = self._run_git_command(["worktree", "list", "--porcelain"])
 
         worktrees = []
-        current_worktree = {}
+        current_worktree: Dict[str, str] = {}
 
         for line in result.stdout.strip().split("\n"):
             if not line:

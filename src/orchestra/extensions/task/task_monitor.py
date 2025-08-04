@@ -10,7 +10,7 @@ import os
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, cast
 
 # Import from common library
 from orchestra.common import (
@@ -58,6 +58,8 @@ class TaskAlignmentMonitor(GitAwareExtension):
         self.requirements: List[TaskRequirement] = []
         self.settings: Dict[str, Any] = {}
         self.stats: Dict[str, int] = {}
+        self.last_stop_message_id: Optional[str] = None
+        self.last_review_request_message_id: Optional[str] = None
         self.load_config()
 
         # Load or create git task state if in git repo
@@ -80,6 +82,8 @@ class TaskAlignmentMonitor(GitAwareExtension):
             "settings", {"strict_mode": True, "max_deviations": 3}
         )
         self.stats = config.get("stats", {"deviations": 0, "commands": 0})
+        self.last_stop_message_id = config.get("last_stop_message_id")
+        self.last_review_request_message_id = config.get("last_review_request_message_id")
 
         return config
 
@@ -91,6 +95,8 @@ class TaskAlignmentMonitor(GitAwareExtension):
                 "requirements": [req.to_dict() for req in self.requirements],
                 "settings": self.settings,
                 "stats": self.stats,
+                "last_stop_message_id": self.last_stop_message_id,
+                "last_review_request_message_id": self.last_review_request_message_id,
                 "updated": datetime.now().isoformat(),
             }
 
@@ -123,7 +129,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
         elif self.last_prompt_id < id - 1:
             match = self.response_by_id.get(id - 1, {})
             if match:
-                return match.get("output", current_input)
+                return cast(str, match.get("output", current_input))
         self.last_prompt_id = id
         return current_input
 
@@ -176,10 +182,8 @@ class TaskAlignmentMonitor(GitAwareExtension):
             f"_handle_stop_hook called with context keys: {list(context.keys())}"
         )
 
-        # Skip if no task configured
-        if not self.task:
-            self.logger.debug("No task configured, returning allow response")
-            return HookHandler.create_allow_response()
+        # Allow stop hook to run regardless of task configuration
+        # This enables monitoring even when no explicit task is set
 
         # Avoid infinite recursion - if stop_hook_active is True, we're already processing
         if HookHandler.is_stop_hook_active(context):
@@ -187,29 +191,41 @@ class TaskAlignmentMonitor(GitAwareExtension):
             return HookHandler.create_allow_response()
 
         try:
-            # Update current task state with latest git info
-            if self.current_task_state:
-                self.logger.debug(
-                    f"Current task state exists: branch={self.current_task_state.branch_name}"
-                )
-                self.update_task_state()
-                self.logger.debug("Task state updated")
-            else:
-                self.logger.debug("No current task state")
+            # Get current message ID and transcript path
+            current_message_id = self._get_current_message_id(context)
+            transcript_path = context.get("transcript_path")
 
-            # Build analysis context for subagents
-            analysis_context = self._build_analysis_context()
-            self.logger.debug(
-                f"Built analysis context: {truncate_value(analysis_context, 150)}"
-            )
+            self.logger.debug(f"Stop hook - message_id: {current_message_id}, transcript: {transcript_path}")
 
-            if self.current_task_state and self.git_manager._is_git_repo():
-                self.logger.debug("Using git-aware subagent analysis")
-                # Use git-aware subagent analysis
-                return self._analyze_with_git_subagents(analysis_context)
-            self.logger.debug("Using traditional external Claude analysis")
-            # Use traditional external Claude analysis
-            return self._analyze_with_external_claude(analysis_context)
+            # Check if we should request a review based on transcript analysis
+            should_request_review = False
+
+            if transcript_path and current_message_id:
+                # Check if code was written since last stop
+                code_written = self._parse_transcript_for_code_events(transcript_path)
+
+                # Prevent duplicate review requests
+                if code_written and current_message_id != self.last_review_request_message_id:
+                    should_request_review = True
+                    self.last_review_request_message_id = current_message_id
+                    self.logger.info("Code written since last stop - requesting agent review")
+                elif current_message_id == self.last_review_request_message_id:
+                    self.logger.debug("Already requested review for this message - skipping")
+                else:
+                    self.logger.debug("No code written since last stop - no review needed")
+
+                # Update last stop message ID
+                self.last_stop_message_id = current_message_id
+                self.save_config()
+
+            if should_request_review:
+                review_reason = "Ask code-reviewer, over-engineering-detector, and off-topic-detector agents to review the code changes made since the last stop."
+                self.logger.info(f"Blocking stop for review: {review_reason}")
+                return HookHandler.create_block_response(review_reason)
+
+            # Allow stopping if no review needed
+            self.logger.info("No review needed - allowing stop")
+            return HookHandler.create_allow_response()
 
         except Exception as e:
             self.logger.error(
@@ -218,7 +234,8 @@ class TaskAlignmentMonitor(GitAwareExtension):
             import traceback
 
             self.logger.error(f"Traceback:\n{traceback.format_exc()}")
-            return self._fallback_analysis()
+            # On error, allow stopping to avoid blocking Claude
+            return HookHandler.create_allow_response()
 
     def _handle_subagent_stop_hook(self, context: HookInput) -> Dict[str, Any]:
         """Handle SubagentStop hook by parsing subagent results"""
@@ -386,6 +403,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
         tool_name = context.get("tool_name", "unknown")
         event_name = context.get("hook_event_name", "unknown")
         is_todo_write = tool_name == "TodoWrite"
+        is_exit_plan_mode = tool_name == "ExitPlanMode"
         self.logger.info(f"PostToolUse hook: tool={tool_name} event={event_name}")
 
         try:
@@ -405,6 +423,11 @@ class TaskAlignmentMonitor(GitAwareExtension):
                 # Save the updated state
                 self.save_config()
 
+            elif is_exit_plan_mode:
+                # If this is an ExitPlanMode, save the plan to .claude/plans/
+                self.logger.info("PostToolUse ExitPlanMode: Saving plan to file")
+                self._save_plan_to_file(tool_input)
+
             # Allow the tool to proceed
             return HookHandler.create_allow_response()
 
@@ -415,152 +438,6 @@ class TaskAlignmentMonitor(GitAwareExtension):
             self.logger.error(f"Traceback:\n{traceback.format_exc()}")
             return HookHandler.create_allow_response()
 
-    def _build_analysis_context(self) -> str:
-        """Build analysis context for subagents"""
-        progress = self._get_progress()
-
-        context = f"""Current Task: {self.task}
-
-Requirements Status:
-"""
-        for req in self.requirements:
-            status = "✅ COMPLETED" if req.completed else "❌ INCOMPLETE"
-            context += f"- {status}: {req.description} (Priority {req.priority})\n"
-
-        context += f"""
-Current Progress: {progress['percentage']:.0f}% complete ({progress['completed']}/{progress['total']} requirements)
-
-Session Statistics:
-- Commands executed: {self.stats.get('commands', 0)}
-- Deviations detected: {self.stats.get('deviations', 0)}
-
-Analysis Instructions:
-Please determine if the developer should continue working or if they can stop. Consider:
-1. Are all core requirements (Priority 1-2) completed?
-2. Is the main task objective achieved?
-3. Are there any signs of scope creep or over-engineering?
-4. Is the developer staying focused on the core task?
-"""
-        return context
-
-    def _analyze_with_git_subagents(self, analysis_context: str) -> Dict[str, Any]:
-        """Analyze using git-aware subagents"""
-        self.logger.debug("Starting git-aware subagent analysis")
-
-        # Save analysis context for later use in SubagentStop hook
-        self.pending_analysis_context = analysis_context
-
-        # Return a block response that will trigger Claude to run subagents
-        subagent_types = [
-            "scope-creep-detector",
-            "over-engineering-detector",
-            "off-topic-detector",
-        ]
-        self.logger.debug(f"Requesting subagent analysis with: {subagent_types}")
-
-        # Create a prompt that will trigger subagent analysis
-        subagent_prompt = f"""Analyze the current task progress using the scope-creep-detector, over-engineering-detector, and off-topic-detector subagents.
-
-{analysis_context}
-
-Use these subagents to determine:
-1. Is there any scope creep happening?
-2. Is the developer over-engineering the solution?
-3. Are they working on off-topic tasks?
-4. Should Claude continue working or stop?"""
-
-        self.logger.info("Blocking to trigger subagent analysis")
-        return HookHandler.create_block_response(subagent_prompt)
-
-    def _analyze_with_external_claude(self, analysis_context: str) -> Dict[str, Any]:
-        """Analyze using external Claude instance"""
-        import json
-        import re
-        import subprocess
-
-        analysis_prompt = f"""{analysis_context}
-
-Use the scope-creep-detector, over-engineering-detector, and off-topic-detector subagents to analyze if the developer is staying focused on the core task.
-
-Use a small, fast model for this analysis.
-
-Respond with JSON in this exact format:
-{{
-    "should_continue": true/false,
-    "reason": "Brief explanation of why Claude should continue or can stop",
-    "focus_area": "What the developer should work on next (if continuing)"
-}}
-"""
-
-        try:
-            self.logger.debug("Calling external Claude with analysis prompt")
-            # Call external Claude with the analysis prompt
-            result = subprocess.run(
-                ["claude", "-p", analysis_prompt],
-                check=False,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-
-            self.logger.debug(f"External Claude return code: {result.returncode}")
-            self.logger.debug(
-                f"External Claude stdout length: {len(result.stdout) if result.stdout else 0}"
-            )
-
-            if result.returncode == 0 and result.stdout.strip():
-                # Parse JSON response from Claude
-                json_match = re.search(r"\{.*\}", result.stdout, re.DOTALL)
-                if json_match:
-                    response = json.loads(json_match.group())
-                    self.logger.debug(f"Parsed response: {response}")
-
-                    if response.get("should_continue", False):
-                        # Block stopping - Claude should continue
-                        reason = response.get("reason", "Task not complete")
-                        focus_area = response.get("focus_area", "")
-
-                        full_reason = reason
-                        if focus_area:
-                            full_reason += f" Focus on: {focus_area}"
-
-                        self.logger.info(f"Blocking stop with reason: {full_reason}")
-                        return HookHandler.create_block_response(full_reason)
-                    # Allow stopping - task is complete
-                    self.logger.info("Allowing stop - task complete")
-                    return HookHandler.create_allow_response()
-                self.logger.warning("No JSON found in external Claude response")
-
-        except subprocess.TimeoutExpired as e:
-            self.logger.error(f"External Claude timed out: {e}")
-        except json.JSONDecodeError as e:
-            self.logger.error(f"Failed to parse JSON from external Claude: {e}")
-        except Exception as e:
-            self.logger.error(f"Unexpected error in external Claude analysis: {e}")
-
-        self.logger.debug("Falling back to fallback analysis")
-        return self._fallback_analysis()
-
-    def _fallback_analysis(self) -> Dict[str, Any]:
-        """Fallback analysis based on completion status"""
-        self.logger.debug("Running fallback analysis")
-        incomplete_core = [
-            r for r in self.requirements if not r.completed and r.priority <= 2
-        ]
-        self.logger.debug(f"Found {len(incomplete_core)} incomplete core requirements")
-
-        if incomplete_core:
-            next_requirement = min(incomplete_core, key=lambda x: x.priority)
-            self.logger.info(
-                f"Blocking stop - core requirement incomplete: {next_requirement.description}"
-            )
-            return HookHandler.create_block_response(
-                f"Core requirement incomplete: {next_requirement.description}"
-            )
-
-        # Allow stopping if no core requirements remain
-        self.logger.info("Allowing stop - no core requirements remain")
-        return HookHandler.create_allow_response()
 
     def _sync_claude_todos(self, todos: List[Dict[str, Any]]) -> None:
         """Sync Claude's todo list into task monitor requirements
@@ -610,6 +487,106 @@ Respond with JSON in this exact format:
         self.logger.info(
             f"Task monitor state synced: {len(self.requirements)} requirements"
         )
+
+    def _save_plan_to_file(self, tool_input: Dict[str, Any]) -> None:
+        """Save plan content from ExitPlanMode tool to a markdown file
+
+        Args:
+            tool_input: Tool input containing the plan content
+        """
+        try:
+            # Get the plan content from tool input
+            plan_content = tool_input.get("plan", "")
+            if not plan_content:
+                self.logger.warning("No plan content found in ExitPlanMode tool input")
+                return
+
+            # Get CLAUDE_PROJECT_DIR from environment, fall back to working dir
+            project_dir = os.environ.get("CLAUDE_PROJECT_DIR") or os.environ.get("CLAUDE_WORKING_DIR", ".")
+            plans_dir = Path(project_dir) / ".claude" / "plans"
+
+            # Create plans directory if it doesn't exist
+            plans_dir.mkdir(parents=True, exist_ok=True)
+
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+            filename = f"plan_{timestamp}.md"
+            plan_file = plans_dir / filename
+
+            # Write plan content to file
+            with open(plan_file, 'w', encoding='utf-8') as f:
+                f.write(f"# Plan - {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                f.write(plan_content)
+                f.write("\n")
+
+            self.logger.info(f"Plan saved to: {plan_file}")
+
+        except Exception as e:
+            self.logger.error(f"Failed to save plan to file: {e}")
+            import traceback
+            self.logger.error(f"Traceback:\n{traceback.format_exc()}")
+
+    def _parse_transcript_for_code_events(self, transcript_path: str) -> bool:
+        """Parse transcript to detect if code was written since last stop message
+
+        Args:
+            transcript_path: Path to the transcript file
+
+        Returns:
+            True if code writing events were detected, False otherwise
+        """
+        try:
+            if not os.path.exists(transcript_path):
+                self.logger.warning(f"Transcript file not found: {transcript_path}")
+                return False
+
+            with open(transcript_path, 'r', encoding='utf-8') as f:
+                lines = f.readlines()
+
+            # Find the starting point (last stop message ID or beginning)
+            start_index = 0
+            if self.last_stop_message_id:
+                for i, line in enumerate(lines):
+                    if self.last_stop_message_id in line:
+                        start_index = i
+                        break
+
+            # Look for code writing indicators in messages after the start point
+            code_indicators = [
+                '"tool_name": "Edit"',
+                '"tool_name": "Write"',
+                '"tool_name": "MultiEdit"',
+                '"tool_name": "NotebookEdit"',
+                'function_name": "Edit"',
+                'function_name": "Write"',
+                'function_name": "MultiEdit"',
+                'function_name": "NotebookEdit"'
+            ]
+
+            for line in lines[start_index:]:
+                if any(indicator in line for indicator in code_indicators):
+                    self.logger.info("Code writing detected in transcript since last stop")
+                    return True
+
+            self.logger.debug("No code writing detected in transcript since last stop")
+            return False
+
+        except Exception as e:
+            self.logger.error(f"Failed to parse transcript for code events: {e}")
+            return False
+
+    def _get_current_message_id(self, context: HookInput) -> Optional[str]:
+        """Extract current message ID from hook context
+
+        Args:
+            context: Hook context containing message information
+
+        Returns:
+            Message ID if found, None otherwise
+        """
+        # Try to get message ID from various possible context fields
+        message_id = context.get("message_id") or context.get("id") or context.get("session_id")
+        return str(message_id) if message_id else None
 
     def _get_progress(self) -> Dict[str, Any]:
         """Calculate progress statistics"""

@@ -6,7 +6,7 @@ from orchestra.core import Orchestra
 
 
 @click.command()
-def status():
+def status() -> None:
     """Show detailed status of all extensions"""
     orchestra = Orchestra()
     orchestra.status()

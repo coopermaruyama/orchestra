@@ -189,8 +189,8 @@ class Orchestra:
         """Copy extension files to the scripts directory"""
         ext_info = self.extensions[extension]
         monitor_script = ext_info.get("monitor_script")
-
-        if not monitor_script:
+        
+        if not monitor_script or not isinstance(monitor_script, str):
             self.console.print(
                 f"[bold red]⚠️ Warning:[/bold red] No monitor script configured for {extension}"
             )
@@ -594,8 +594,8 @@ class Orchestra:
             if not local_installed and not global_installed:
                 table.add_row(
                     ext_info["name"],
-                    "Disabled",
-                    f"Run 'orchestra enable {ext_id}' to install",
+                    "Disabled", 
+                    f"Run 'orchestra enable {ext_id}' to install"
                 )
                 continue
 
@@ -694,7 +694,7 @@ class Orchestra:
                     state = "Uninitialized"
                     details = "Run '/tester calibrate' to set up"
 
-            table.add_row(ext_info["name"], state, details)
+            table.add_row(str(ext_info["name"]), str(state), str(details))
 
         self.console.print(table)
 

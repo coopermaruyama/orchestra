@@ -17,7 +17,7 @@ console = Console()
 @click.option(
     "--no-truncate", is_flag=True, help="Show full log values without truncation"
 )
-def logs(extension, tail, clear, no_truncate):
+def logs(extension: str, tail: bool, clear: bool, no_truncate: bool) -> None:
     """View or manage extension logs
 
     Examples:

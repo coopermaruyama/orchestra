@@ -90,7 +90,12 @@ def invoke_monitor_hook(
 
         if result.returncode == 0 and result.stdout:
             # Parse the JSON response
-            return json.loads(result.stdout)
+            response = json.loads(result.stdout)
+            return (
+                response
+                if isinstance(response, dict)
+                else {"error": "Invalid response format", "continue": True}
+            )
         # Return error response
         error_msg = (
             result.stderr
@@ -140,8 +145,8 @@ def hook(hook_type: str, args: tuple) -> None:
         return
 
     # Collect responses from all monitors
-    responses = []
-    errors = []
+    responses: List[Dict[str, Any]] = []
+    errors: List[str] = []
 
     for monitor in monitors:
         response = invoke_monitor_hook(monitor, hook_type, context)

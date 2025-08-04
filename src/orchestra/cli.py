@@ -23,7 +23,7 @@ console = Console()
 @click.group(invoke_without_command=True)
 @click.version_option(version="0.7.0", prog_name="Orchestra")
 @click.pass_context
-def cli(ctx):
+def cli(ctx: click.Context) -> None:
     """🎼 Orchestra - Claude Code Extension Manager
 
     Orchestrate your Claude Code workflow with focused extensions.
@@ -46,7 +46,7 @@ cli.add_command(tidy)
 cli.add_command(tester)
 
 
-def main():
+def main() -> None:
     """Main entry point for the CLI"""
     try:
         cli()

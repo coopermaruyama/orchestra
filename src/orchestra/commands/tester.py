@@ -11,7 +11,7 @@ console = Console()
 
 
 @click.group()
-def tester():
+def tester() -> None:
     """Tester commands
 
     Automatically test completed tasks using calibrated testing methods.
@@ -19,7 +19,7 @@ def tester():
     """
 
 
-def run_tester_command(subcommand, *args):
+def run_tester_command(subcommand: str, *args: str) -> None:
     """Helper to run tester commands"""
     # Find the tester_monitor.py script
     local_script = Path(".claude") / "orchestra" / "tester" / "tester_monitor.py"
@@ -47,18 +47,18 @@ def run_tester_command(subcommand, *args):
 
 
 @tester.command()
-def calibrate():
+def calibrate() -> None:
     """Set up testing through interactive calibration"""
     run_tester_command("calibrate")
 
 
 @tester.command()
-def test():
+def test() -> None:
     """Run tests for completed tasks"""
     run_tester_command("test")
 
 
 @tester.command()
-def status():
+def status() -> None:
     """Show calibration status and test results"""
     run_tester_command("status")

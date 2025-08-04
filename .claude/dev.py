@@ -2,6 +2,7 @@
 import json
 import os
 import sys
+from pathlib import Path
 from typing import Any, Dict
 
 
@@ -17,18 +18,21 @@ class HookCompatibleInput:
     def isatty(self) -> bool:
         return False
 
-    def _input(self, id: int, prompt: str, current_input: str) -> str:
+    def input_with_id(self, prompt_id: int, prompt: str, current_input: str) -> str:
         """behaves like input() in tty mode, but is compatible with Claude Code hooks"""
         # Write the received input out to a log file ./inputs.log
         args = sys.argv[1:]
-        with open("./inputs.log", "a") as f:
-            f.write(f"Prompt ID: {id}, args: {args}, Prompt: {prompt}, Input: {current_input}\n")
+        log_path = Path("./inputs.log")
+        with log_path.open("a") as f:
+            f.write(
+                f"Prompt ID: {prompt_id}, args: {args}, Prompt: {prompt}, Input: {current_input}\n"
+            )
         if os.isatty(0):
             # If we're in a TTY, just use the normal input
             return input(prompt)
-        if self.last_prompt_id == id:
+        if self.last_prompt_id == prompt_id:
             return current_input
-        if self.last_prompt_id == id - 1:
+        if self.last_prompt_id == prompt_id - 1:
             # If we're not in a TTY, we need to use the Claude Code hooks
             print(
                 '{"continue": true, '
@@ -42,11 +46,11 @@ class HookCompatibleInput:
                 "}",
                 file=sys.stdout,
             )
-        elif self.last_prompt_id < id - 1:
-            match = self.response_by_id.get(id - 1, {})
+        elif self.last_prompt_id < prompt_id - 1:
+            match = self.response_by_id.get(prompt_id - 1, {})
             if match:
                 return match.get("output", current_input)
-        self.last_prompt_id = id
+        self.last_prompt_id = prompt_id
         return current_input
 
 
@@ -67,9 +71,9 @@ def print_stdin_and_tty():
     print("STDIN:", os.read(0, 1024).decode("utf-8"))
     print("Is TTY:", os.isatty(0))
     svc = HookCompatibleInput(sys.stdin.read())
-    is_autofix = svc._input(1, "Should I auto-fix? [y/n]", "n")
-    name = svc._input(2, "What is your name?", "John Doe")
-    age = svc._input(3, "What is your age?", "30")
+    is_autofix = svc.input_with_id(1, "Should I auto-fix? [y/n]", "n")
+    name = svc.input_with_id(2, "What is your name?", "John Doe")
+    age = svc.input_with_id(3, "What is your age?", "30")
     print(f"Auto-fix: {is_autofix}, Name: {name}, Age: {age}")
     # os._exit(2)  # Use _exit to avoid flushing stdio buffers which could interfere with the output
     # exit with a success code

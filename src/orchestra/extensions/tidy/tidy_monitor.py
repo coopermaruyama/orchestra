@@ -34,8 +34,8 @@ try:
     )
 except ImportError:
     # Fallback for when orchestra is not in path
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "orchestra"))
-    from common import (
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
+    from orchestra.common import (
         BaseExtension,
         HookHandler,
         format_hook_context,
@@ -165,11 +165,10 @@ class TidyMonitor(BaseExtension):
 
         # Return response based on what happened
         if result.get("action_taken"):
-            return HookHandler.create_allow_response(
-                message=f"🧹 Tidy: {result.get('message', 'Checked and fixed issues')}"
-            )
-        else:
-            return HookHandler.create_allow_response()
+            response = HookHandler.create_allow_response()
+            response["output"] = f"🧹 Tidy: {result.get('message', 'Checked and fixed issues')}"
+            return response
+        return HookHandler.create_allow_response()
 
     def _handle_subagent_stop_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle SubagentStop hook - check code modified by subagent"""
@@ -219,13 +218,13 @@ class TidyMonitor(BaseExtension):
     def _check_and_prompt_fixes(self, files: List[str]) -> Dict[str, Any]:
         """Check for issues and prompt Claude to fix them"""
         self.logger.info(f"Checking and prompting fixes for {len(files)} files")
-        
+
         try:
             from orchestra.common.claude_invoker import get_invoker
-            
+
             # Create a focused prompt asking Claude to check for issues and fix them
             file_list = "\n".join(f"- {f}" for f in files)
-            
+
             prompt = f"""Please check the following files for any code quality issues, linting errors, type errors, or other problems:
 
 {file_list}
@@ -237,33 +236,31 @@ Steps:
 4. Report what was found and fixed
 
 Focus on the modified files only and fix any issues you find."""
-            
+
             invoker = get_invoker()
             result = invoker.invoke_claude(prompt, model=None)  # Use default model
-            
+
             if result.get("success"):
                 self.logger.info("Successfully prompted Claude to check and fix issues")
                 return {
                     "success": True,
                     "message": result.get("response", ""),
-                    "action_taken": True
+                    "action_taken": True,
                 }
-            else:
-                self.logger.error(f"Failed to prompt Claude: {result.get('error')}")
-                return {
-                    "success": False,
-                    "message": f"Error: {result.get('error')}",
-                    "action_taken": False
-                }
-                
+            self.logger.error(f"Failed to prompt Claude: {result.get('error')}")
+            return {
+                "success": False,
+                "message": f"Error: {result.get('error')}",
+                "action_taken": False,
+            }
+
         except Exception as e:
             self.logger.error(f"Error prompting Claude for fixes: {e}")
             return {
                 "success": False,
                 "message": f"Exception: {e}",
-                "action_taken": False
+                "action_taken": False,
             }
-
 
     # Slash command handlers
     def handle_slash_command(self, command: str, args: str = "") -> str:
@@ -281,7 +278,7 @@ Focus on the modified files only and fix any issues you find."""
     def _cmd_init(self) -> str:
         """Initialize tidy extension"""
         self.console.print("\n[bold]🧹 Tidy Extension Setup[/bold]")
-        
+
         # Configure basic settings
         self.settings["strict_mode"] = Confirm.ask(
             "Enable strict mode (show issues after each edit)?", default=True
@@ -289,47 +286,47 @@ Focus on the modified files only and fix any issues you find."""
 
         # Save configuration
         self.save_config()
-        
+
         self.console.print("✅ Tidy extension initialized!")
         self.console.print("It will now check for issues after you modify files.")
-        
+
         return "Tidy extension initialized"
 
     def _cmd_check(self, args: str) -> str:
         """Run code quality checks by prompting Claude"""
         files = args.split() if args else []
-        
+
         if not files:
-            self.console.print("🔍 Asking Claude to check for issues in current project...")
+            self.console.print(
+                "🔍 Asking Claude to check for issues in current project..."
+            )
             files = ["current project"]
         else:
             self.console.print(f"🔍 Asking Claude to check {len(files)} file(s)...")
 
         # Use the same logic as the hook to prompt Claude
         result = self._check_and_prompt_fixes(files)
-        
+
         if result.get("success"):
             self.console.print("✅ Check complete!")
             return result.get("message", "Check completed")
-        else:
-            self.console.print(f"❌ Error: {result.get('message')}")
-            return f"Error: {result.get('message')}"
+        self.console.print(f"❌ Error: {result.get('message')}")
+        return f"Error: {result.get('message')}"
 
     def _cmd_fix(self, args: str) -> str:
         """Auto-fix issues by prompting Claude"""
         files = args.split() if args else ["current project"]
-        
+
         self.console.print("🔧 Asking Claude to find and fix issues...")
-        
+
         # Use the same logic as check - just prompt Claude to find and fix
         result = self._check_and_prompt_fixes(files)
-        
+
         if result.get("success"):
             self.console.print("✅ Fix request sent to Claude!")
             return result.get("message", "Fix completed")
-        else:
-            self.console.print(f"❌ Error: {result.get('message')}")
-            return f"Error: {result.get('message')}"
+        self.console.print(f"❌ Error: {result.get('message')}")
+        return f"Error: {result.get('message')}"
 
     def _cmd_status(self) -> str:
         """Show current configuration and status"""
@@ -360,7 +357,7 @@ Focus on the modified files only and fix any issues you find."""
         if self.last_check:
             panel_content.append("\n[bold]Last Check:[/bold]")
             panel_content.append(f"  Time: {self.last_check.get('timestamp', 'Never')}")
-            files_checked = self.last_check.get('files_checked', [])
+            files_checked = self.last_check.get("files_checked", [])
             if files_checked:
                 panel_content.append(f"  Files Checked: {len(files_checked)}")
 
@@ -373,7 +370,6 @@ Focus on the modified files only and fix any issues you find."""
         self.console.print(panel)
 
         return "Status displayed"
-
 
 
 # Main entry point for hook integration and CLI

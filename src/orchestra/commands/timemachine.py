@@ -11,7 +11,7 @@ console = Console()
 
 
 @click.group()
-def timemachine():
+def timemachine() -> None:
     """TimeMachine commands
 
     Automatic git checkpointing for every conversation turn. Travel back
@@ -19,7 +19,7 @@ def timemachine():
     """
 
 
-def run_timemachine_command(subcommand, *args):
+def run_timemachine_command(subcommand: str, *args: str) -> None:
     """Helper to run timemachine commands"""
     # Find the timemachine_monitor.py script
     local_script = (
@@ -49,27 +49,27 @@ def run_timemachine_command(subcommand, *args):
 
 
 @timemachine.command(name="list")
-def list_checkpoints():
+def list_checkpoints() -> None:
     """View conversation checkpoints"""
     run_timemachine_command("list")
 
 
 @timemachine.command()
 @click.argument("checkpoint_id")
-def checkout(checkpoint_id):
+def checkout(checkpoint_id: str) -> None:
     """Checkout a specific checkpoint"""
     run_timemachine_command("checkout", checkpoint_id)
 
 
 @timemachine.command()
 @click.argument("checkpoint_id")
-def view(checkpoint_id):
+def view(checkpoint_id: str) -> None:
     """View checkpoint details"""
     run_timemachine_command("view", checkpoint_id)
 
 
 @timemachine.command()
 @click.argument("n", type=int)
-def rollback(n):
+def rollback(n: int) -> None:
     """Rollback n conversation turns"""
     run_timemachine_command("rollback", str(n))

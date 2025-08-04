@@ -164,7 +164,8 @@ class CoreCommand(ABC):
         """
         # Try direct parse first
         try:
-            return json.loads(content)
+            result = json.loads(content)
+            return result if isinstance(result, dict) else {}
         except json.JSONDecodeError:
             pass
 
@@ -174,38 +175,40 @@ class CoreCommand(ABC):
         # Try to find JSON between ```json and ```
         json_match = re.search(r"```json\s*(.*?)\s*```", content, re.DOTALL)
         if json_match:
-            return json.loads(json_match.group(1))
+            result = json.loads(json_match.group(1))
+            return result if isinstance(result, dict) else {}
 
         # Try to find raw JSON object (handle nested objects)
         # Look for balanced braces
-        start_idx = content.find('{')
+        start_idx = content.find("{")
         if start_idx != -1:
             brace_count = 0
             in_string = False
             escape = False
-            
+
             for i, char in enumerate(content[start_idx:], start_idx):
                 if escape:
                     escape = False
                     continue
-                    
-                if char == '\\':
+
+                if char == "\\":
                     escape = True
                     continue
-                    
+
                 if char == '"' and not escape:
                     in_string = not in_string
                     continue
-                    
+
                 if not in_string:
-                    if char == '{':
+                    if char == "{":
                         brace_count += 1
-                    elif char == '}':
+                    elif char == "}":
                         brace_count -= 1
                         if brace_count == 0:
                             # Found complete JSON object
-                            json_str = content[start_idx:i+1]
-                            return json.loads(json_str)
+                            json_str = content[start_idx : i + 1]
+                            result = json.loads(json_str)
+                            return result if isinstance(result, dict) else {}
 
         # If all else fails, raise the error
         raise json.JSONDecodeError("No valid JSON found in response", content, 0)

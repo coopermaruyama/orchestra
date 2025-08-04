@@ -6,7 +6,7 @@ from orchestra.core import Orchestra
 
 
 @click.command()
-def list_extensions():
+def list_extensions() -> None:
     """List enabled extensions"""
     orchestra = Orchestra()
     orchestra.list_extensions()

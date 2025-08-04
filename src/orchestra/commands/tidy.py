@@ -11,7 +11,7 @@ console = Console()
 
 
 @click.group()
-def tidy():
+def tidy() -> None:
     """Tidy commands
 
     Automated code quality checker that ensures code meets project standards.
@@ -19,7 +19,7 @@ def tidy():
     """
 
 
-def run_tidy_command(subcommand, *args):
+def run_tidy_command(subcommand: str, *args: str) -> None:
     """Helper to run tidy commands"""
     # Find the tidy_monitor.py script
     local_script = Path(".claude") / "orchestra" / "tidy" / "tidy_monitor.py"
@@ -45,27 +45,27 @@ def run_tidy_command(subcommand, *args):
 
 
 @tidy.command()
-def init():
+def init() -> None:
     """Initialize tidy for your project"""
     run_tidy_command("init")
 
 
 @tidy.command()
 @click.argument("files", nargs=-1)
-def check(files):
+def check(files: tuple[str, ...]) -> None:
     """Run code quality checks"""
     run_tidy_command("check", *files)
 
 
 @tidy.command()
 @click.argument("files", nargs=-1)
-def fix(files):
+def fix(files: tuple[str, ...]) -> None:
     """Auto-fix code quality issues"""
     run_tidy_command("fix", *files)
 
 
 @tidy.command()
-def status():
+def status() -> None:
     """Show current configuration and status"""
     run_tidy_command("status")
 
@@ -73,8 +73,6 @@ def status():
 @tidy.command()
 @click.argument("type", type=click.Choice(["do", "dont"]))
 @click.argument("example")
-def learn(type, example):
+def learn(example_type: str, example: str) -> None:
     """Add do/don't examples"""
-    run_tidy_command("learn", type, example)
-
-
+    run_tidy_command("learn", example_type, example)

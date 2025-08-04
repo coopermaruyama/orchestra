@@ -11,7 +11,7 @@ console = Console()
 
 
 @click.group()
-def task():
+def task() -> None:
     """Task Monitor commands
 
     Keep Claude focused on your task requirements. Prevents scope creep,
@@ -19,7 +19,7 @@ def task():
     """
 
 
-def run_task_command(subcommand, *args):
+def run_task_command(subcommand: str, *args: str) -> None:
     """Helper to run task monitor commands"""
     # Find the task_monitor.py script
     local_script = Path(".claude") / "orchestra" / "task" / "task_monitor.py"
@@ -45,30 +45,30 @@ def run_task_command(subcommand, *args):
 
 
 @task.command()
-def start():
+def start() -> None:
     """Interactive task setup"""
     run_task_command("start")
 
 
 @task.command()
-def status():
+def status() -> None:
     """Check current progress"""
     run_task_command("status")
 
 
 @task.command()
-def next():
+def next() -> None:
     """Show next priority action"""
     run_task_command("next")
 
 
 @task.command()
-def complete():
+def complete() -> None:
     """Mark current requirement done"""
     run_task_command("complete")
 
 
 @task.command()
-def focus():
+def focus() -> None:
     """Quick focus reminder"""
     run_task_command("focus")
