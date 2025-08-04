@@ -6,7 +6,8 @@
       "Bash(ls:*)",
       "Bash(uv run pytest:*)",
       "Bash(uv run:*)",
-      "Bash(sh:*)"
+      "Bash(sh:*)",
+      "Bash(find:*)"
     ]
   }
 }
