@@ -1,0 +1,8 @@
+{
+    "enabled": true,
+    "calibrated": true,
+    "calibration_date": "2025-08-04T00:16:16Z",
+    "project_root": "/Users/coopermaruyama/Developer/orchestra",
+    "calibration_dir": "/Users/coopermaruyama/Developer/orchestra/.claude/orchestra/.tester",
+    "test_runner": "/Users/coopermaruyama/Developer/orchestra/.claude/orchestra/.tester/run_tests.sh"
+}

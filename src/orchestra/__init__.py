@@ -1,6 +1,7 @@
 """Orchestra - Claude Code Enhancements"""
 
-from .orchestra import main, Orchestra
+from .cli import main
+from .core import Orchestra
 
-__version__ = "0.5.0"
+__version__ = "0.7.0"
 __all__ = ["main", "Orchestra"]

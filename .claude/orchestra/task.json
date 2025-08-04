@@ -1,47 +1,23 @@
 {
-  "task": "Task: Examine the current orchestra structure and bootstrap.sh",
+  "task": "Task: Add click and jinja2 dependencies to pyproject.toml",
   "requirements": [
     {
       "id": "1",
-      "description": "Create CoreCommand base class",
+      "description": "Investigate timemachine list command issue",
       "priority": 1,
       "completed": true
     },
     {
       "id": "2",
-      "description": "Write tests for TaskCheckCommand",
+      "description": "Fix the list command to show saved checkpoints",
       "priority": 1,
       "completed": true
     },
     {
       "id": "3",
-      "description": "Implement TaskCheckCommand",
+      "description": "Reinstall timemachine extension with updated code",
       "priority": 1,
-      "completed": true
-    },
-    {
-      "id": "4",
-      "description": "Write tests for TidyFixCommand",
-      "priority": 2,
-      "completed": true
-    },
-    {
-      "id": "5",
-      "description": "Implement TidyFixCommand",
-      "priority": 2,
-      "completed": true
-    },
-    {
-      "id": "6",
-      "description": "Write tests for TesterAnalyzeCommand",
-      "priority": 2,
-      "completed": true
-    },
-    {
-      "id": "7",
-      "description": "Implement TesterAnalyzeCommand",
-      "priority": 2,
-      "completed": true
+      "completed": false
     }
   ],
   "settings": {
@@ -52,5 +28,5 @@
     "deviations": 0,
     "commands": 0
   },
-  "updated": "2025-08-03T07:40:25.004955"
+  "updated": "2025-08-03T19:08:19.744437"
 }

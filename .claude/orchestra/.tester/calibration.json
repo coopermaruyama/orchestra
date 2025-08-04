@@ -1,0 +1,37 @@
+{
+    "project_type": "python",
+    "test_framework": "pytest",
+    "test_patterns": {
+        "unit": "tests/unit/test_*.py",
+        "integration": "tests/integration/test_*.py",
+        "e2e": "tests/e2e/test_*.py"
+    },
+    "coverage_config": {
+        "source": ["src/orchestra"],
+        "omit": ["*/tests/*", "*/__pycache__/*"],
+        "min_coverage": 80
+    },
+    "test_commands": {
+        "unit": "uv run pytest tests/unit -v",
+        "integration": "uv run pytest tests/integration -v",
+        "e2e": "uv run pytest tests/e2e -v",
+        "all": "uv run pytest -v",
+        "coverage": "uv run pytest --cov=orchestra --cov-report=term-missing"
+    },
+    "code_quality": {
+        "formatter": "black",
+        "linter": "ruff",
+        "type_checker": "mypy",
+        "commands": {
+            "format": "uv run black .",
+            "lint": "uv run ruff check .",
+            "typecheck": "uv run mypy src/"
+        }
+    },
+    "markers": [
+        "unit",
+        "integration",
+        "slow",
+        "deviation_detection"
+    ]
+}

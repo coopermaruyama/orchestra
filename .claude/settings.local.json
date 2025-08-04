@@ -4,8 +4,9 @@
     "allow": [
       "Bash(git config:*)",
       "Bash(ls:*)",
-      "Bash(pip install:*)",
-      "Bash(uv run pytest:*)"
+      "Bash(uv run pytest:*)",
+      "Bash(uv run:*)",
+      "Bash(sh:*)"
     ]
   }
 }

@@ -8,7 +8,11 @@ git integration, hook handling, and subagent management.
 import json
 import os
 import sys
+import tempfile
+import threading
 from abc import ABC, abstractmethod
+from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from orchestra.common.types import HookInput
@@ -19,10 +23,155 @@ from .subagent_runner import SubagentRunner
 from .task_state import GitTaskState
 
 
+class SessionStateManager:
+    """Manages cross-hook state persistence for Orchestra extensions.
+
+    Since each hook invocation runs as a separate process, this class
+    provides a mechanism to persist state between hook calls using
+    temporary files.
+    """
+
+    def __init__(self, extension_name: str):
+        """Initialize state manager for an extension.
+
+        Args:
+            extension_name: Name of the extension (used for namespacing)
+        """
+        self.extension_name = extension_name
+        self._lock = threading.Lock()
+
+        # Get temp directory from environment or use system default
+        temp_base = os.environ.get("TMPDIR", tempfile.gettempdir())
+        self.state_dir = Path(temp_base) / "orchestra_state"
+        self.state_dir.mkdir(exist_ok=True)
+
+        # Clean up old state files on initialization
+        self._cleanup_old_states()
+
+    def _get_state_path(self, session_id: str, transcript_id: str) -> Path:
+        """Get the path for a state file.
+
+        Args:
+            session_id: Claude session ID
+            transcript_id: Transcript ID for the conversation
+
+        Returns:
+            Path to the state file
+        """
+        # Create a unique filename for this session/transcript/extension combo
+        filename = f"{session_id}_{transcript_id}_{self.extension_name}.json"
+        return self.state_dir / filename
+
+    def get_state(self, session_id: str, transcript_id: str) -> Dict[str, Any]:
+        """Get state for a session/transcript.
+
+        Args:
+            session_id: Claude session ID
+            transcript_id: Transcript ID for the conversation
+
+        Returns:
+            State dictionary (empty dict if no state exists)
+        """
+        state_path = self._get_state_path(session_id, transcript_id)
+
+        with self._lock:
+            if state_path.exists():
+                try:
+                    with state_path.open() as f:
+                        return json.load(f)
+                except (json.JSONDecodeError, OSError):
+                    # Return empty dict if file is corrupted or can't be read
+                    return {}
+            return {}
+
+    def set_state(
+        self, session_id: str, transcript_id: str, state: Dict[str, Any]
+    ) -> None:
+        """Set state for a session/transcript.
+e
+        Args:
+            session_id: Claude session ID
+            transcript_id: Transcript ID for the conversation
+            state: State dictionary to persist
+        """
+        state_path = self._get_state_path(session_id, transcript_id)
+
+        with self._lock:
+            try:
+                # Add timestamp for cleanup purposes
+                state["_last_updated"] = datetime.now().isoformat()
+
+                # Write atomically by using a temp file
+                temp_path = state_path.with_suffix(".tmp")
+                with temp_path.open("w") as f:
+                    json.dump(state, f, indent=2)
+
+                # Atomic rename
+                temp_path.replace(state_path)
+            except OSError as e:
+                # Log error but don't crash - state persistence is best-effort
+                print(f"Warning: Failed to persist state: {e}")
+
+    def update_state(
+        self, session_id: str, transcript_id: str, updates: Dict[str, Any]
+    ) -> None:
+        """Update specific fields in the state.
+
+        Args:
+            session_id: Claude session ID
+            transcript_id: Transcript ID for the conversation
+            updates: Dictionary of updates to apply
+        """
+        current_state = self.get_state(session_id, transcript_id)
+        current_state.update(updates)
+        self.set_state(session_id, transcript_id, current_state)
+
+    def clear_state(self, session_id: str, transcript_id: str) -> None:
+        """Clear state for a session/transcript.
+
+        Args:
+            session_id: Claude session ID
+            transcript_id: Transcript ID for the conversation
+        """
+        state_path = self._get_state_path(session_id, transcript_id)
+
+        with self._lock:
+            try:
+                if state_path.exists():
+                    state_path.unlink()
+            except OSError:
+                # Ignore errors when cleaning up
+                pass
+
+    def _cleanup_old_states(self, max_age_hours: int = 24) -> None:
+        """Clean up state files older than max_age_hours.
+
+        Args:
+            max_age_hours: Maximum age in hours before cleanup
+        """
+        cutoff_time = datetime.now() - timedelta(hours=max_age_hours)
+
+        try:
+            for state_file in self.state_dir.glob(f"*_{self.extension_name}.json"):
+                try:
+                    # Check file modification time
+                    mtime = datetime.fromtimestamp(state_file.stat().st_mtime)
+                    if mtime < cutoff_time:
+                        state_file.unlink()
+                except OSError:
+                    # Skip files we can't process
+                    continue
+        except OSError:
+            # If we can't read the directory, skip cleanup
+            pass
+
+
 class BaseExtension(ABC):
     """Base class for all Orchestra extensions"""
 
-    def __init__(self, config_file: Optional[str] = None, working_dir: Optional[str] = None):
+    def __init__(
+        self, config_file: Optional[str] = None, working_dir: Optional[str] = None
+    ):
         """Initialize base extension
 
         Args:
@@ -35,9 +184,18 @@ class BaseExtension(ABC):
         if config_file is None:
             orchestra_dir = os.path.join(self.working_dir, ".claude", "orchestra")
             os.makedirs(orchestra_dir, exist_ok=True)
-            config_file = os.path.join(orchestra_dir, self.get_default_config_filename())
+            config_file = os.path.join(
+                orchestra_dir, self.get_default_config_filename()
+            )
 
         self.config_file = config_file
+        self.last_prompt_id = -1
+        self.response_by_id: Dict[int, Dict[str, Any]] = {}
+
+        # Initialize session state manager
+        # Use the config filename (without .json) as the extension name
+        extension_name = Path(self.get_default_config_filename()).stem
+        self._state_manager = SessionStateManager(extension_name)
 
     @abstractmethod
     def get_default_config_filename(self) -> str:
@@ -78,11 +236,88 @@ class BaseExtension(ABC):
         """Check if running inside Claude Code"""
         return os.environ.get("CLAUDECODE") == "1"
 
+    def get_session_state(self, context: Dict[str, Any]) -> Dict[str, Any]:
+        """Get session state for the current hook context.
+
+        Args:
+            context: Hook context containing session_id and transcript_path
+
+        Returns:
+            Session state dictionary
+        """
+        session_id = context.get("session_id", "")
+        transcript_path = context.get("transcript_path", "")
+
+        if not session_id or not transcript_path:
+            return {}
+
+        # Extract transcript ID from path
+        transcript_id = Path(transcript_path).stem
+
+        return self._state_manager.get_state(session_id, transcript_id)
+
+    def set_session_state(self, context: Dict[str, Any], state: Dict[str, Any]) -> None:
+        """Set session state for the current hook context.
+
+        Args:
+            context: Hook context containing session_id and transcript_path
+            state: State dictionary to persist
+        """
+        session_id = context.get("session_id", "")
+        transcript_path = context.get("transcript_path", "")
+
+        if not session_id or not transcript_path:
+            return
+
+        # Extract transcript ID from path
+        transcript_id = Path(transcript_path).stem
+
+        self._state_manager.set_state(session_id, transcript_id, state)
+
+    def update_session_state(
+        self, context: Dict[str, Any], updates: Dict[str, Any]
+    ) -> None:
+        """Update specific fields in session state.
+
+        Args:
+            context: Hook context containing session_id and transcript_path
+            updates: Dictionary of updates to apply
+        """
+        session_id = context.get("session_id", "")
+        transcript_path = context.get("transcript_path", "")
+
+        if not session_id or not transcript_path:
+            return
+
+        # Extract transcript ID from path
+        transcript_id = Path(transcript_path).stem
+
+        self._state_manager.update_state(session_id, transcript_id, updates)
+
+    def clear_session_state(self, context: Dict[str, Any]) -> None:
+        """Clear session state for the current hook context.
+
+        Args:
+            context: Hook context containing session_id and transcript_path
+        """
+        session_id = context.get("session_id", "")
+        transcript_path = context.get("transcript_path", "")
+
+        if not session_id or not transcript_path:
+            return
+
+        # Extract transcript ID from path
+        transcript_id = Path(transcript_path).stem
+
+        self._state_manager.clear_state(session_id, transcript_id)
+
 
 class GitAwareExtension(BaseExtension):
     """Base class for git-aware Orchestra extensions"""
 
-    def __init__(self, config_file: Optional[str] = None, working_dir: Optional[str] = None):
+    def __init__(
+        self, config_file: Optional[str] = None, working_dir: Optional[str] = None
+    ):
         """Initialize git-aware extension
 
         Args:
@@ -103,8 +338,9 @@ class GitAwareExtension(BaseExtension):
         """Get current task state"""
         return self._current_task_state
 
-    def create_task_snapshot(self, task_id: Optional[str] = None,
-                            task_description: str = "") -> GitTaskState:
+    def create_task_snapshot(
+        self, task_id: Optional[str] = None, task_description: str = ""
+    ) -> GitTaskState:
         """Create a non-invasive task snapshot and set as current task
 
         Args:
@@ -115,8 +351,7 @@ class GitAwareExtension(BaseExtension):
             Created GitTaskState
         """
         task_state = self.git_manager.create_task_snapshot(
-            task_id=task_id,
-            task_description=task_description
+            task_id=task_id, task_description=task_description
         )
 
         self._current_task_state = task_state
@@ -183,11 +418,13 @@ class GitAwareExtension(BaseExtension):
         if not self._current_task_state:
             return []
 
-        return self.git_manager.get_task_file_changes(self._current_task_state, target_sha)
+        return self.git_manager.get_task_file_changes(
+            self._current_task_state, target_sha
+        )
 
-    def invoke_subagent(self, subagent_type: str,
-                       analysis_context: str,
-                       create_branch: bool = True) -> Dict[str, Any]:
+    def invoke_subagent(
+        self, subagent_type: str, analysis_context: str, create_branch: bool = True
+    ) -> Dict[str, Any]:
         """Invoke a subagent with current task context
 
         Args:
@@ -201,18 +438,19 @@ class GitAwareExtension(BaseExtension):
         if not self._current_task_state:
             return {
                 "error": "No current task state. Create a task branch first.",
-                "suggestion": "Call create_task_branch() to initialize task tracking"
+                "suggestion": "Call create_task_branch() to initialize task tracking",
             }
 
         return self.subagent_runner.invoke_subagent(
             subagent_type=subagent_type,
             task_state=self._current_task_state,
             analysis_context=analysis_context,
-            create_branch=create_branch
+            create_branch=create_branch,
         )
 
-    def invoke_multiple_subagents(self, subagent_types: List[str],
-                                 analysis_context: str) -> Dict[str, Any]:
+    def invoke_multiple_subagents(
+        self, subagent_types: List[str], analysis_context: str
+    ) -> Dict[str, Any]:
         """Invoke multiple subagents with current task context
 
         Args:
@@ -225,25 +463,25 @@ class GitAwareExtension(BaseExtension):
         if not self._current_task_state:
             return {
                 "error": "No current task state. Create a task branch first.",
-                "suggestion": "Call create_task_branch() to initialize task tracking"
+                "suggestion": "Call create_task_branch() to initialize task tracking",
             }
 
         return self.subagent_runner.invoke_multiple_subagents(
             subagent_types=subagent_types,
             task_state=self._current_task_state,
-            analysis_context=analysis_context
+            analysis_context=analysis_context,
         )
 
-    def should_invoke_subagent(self, subagent_type: str,
-                              analysis_context: str,
-                              include_diff: bool = True) -> Dict[str, Any]:
+    def should_invoke_subagent(
+        self, subagent_type: str, analysis_context: str, include_diff: bool = True
+    ) -> Dict[str, Any]:
         """Check if a subagent should be invoked using predicate system
-        
+
         Args:
             subagent_type: Type of subagent to check
             analysis_context: Context for analysis
             include_diff: Whether to include git diff in check
-            
+
         Returns:
             Dict with 'should_invoke' (bool), 'reasoning', and metadata
         """
@@ -251,49 +489,53 @@ class GitAwareExtension(BaseExtension):
             return {
                 "should_invoke": False,
                 "reasoning": "No current task state available",
-                "error": True
+                "error": True,
             }
 
         return self.subagent_runner.should_invoke_subagent(
             subagent_type=subagent_type,
             task_state=self._current_task_state,
             analysis_context=analysis_context,
-            include_diff=include_diff
+            include_diff=include_diff,
         )
 
-    def check_all_subagents(self, analysis_context: str,
-                           include_diff: bool = True) -> Dict[str, Any]:
+    def check_all_subagents(
+        self, analysis_context: str, include_diff: bool = True
+    ) -> Dict[str, Any]:
         """Check all subagents to see which ones should be invoked
-        
+
         Args:
             analysis_context: Context for analysis
             include_diff: Whether to include git diff
-            
+
         Returns:
             Dict with recommendations for each subagent
         """
         if not self._current_task_state:
             return {
                 "error": "No current task state available",
-                "has_recommendations": False
+                "has_recommendations": False,
             }
 
         return self.subagent_runner.check_all_subagents(
             task_state=self._current_task_state,
             analysis_context=analysis_context,
-            include_diff=include_diff
+            include_diff=include_diff,
         )
 
-    def check_predicate(self, question: str,
-                       context: Optional[Dict[str, Any]] = None,
-                       include_git_diff: bool = False) -> Dict[str, Any]:
+    def check_predicate(
+        self,
+        question: str,
+        context: Optional[Dict[str, Any]] = None,
+        include_git_diff: bool = False,
+    ) -> Dict[str, Any]:
         """Check a yes/no predicate using Claude
-        
+
         Args:
             question: Yes/no question to ask
             context: Additional context
             include_git_diff: Whether to include git diff
-            
+
         Returns:
             Dict with 'answer' (bool), 'confidence', 'reasoning'
         """
@@ -307,23 +549,24 @@ class GitAwareExtension(BaseExtension):
             context["task_branch"] = self._current_task_state.branch_name
 
         return check_predicate(
-            question=question,
-            context=context,
-            include_git_diff=include_git_diff
+            question=question, context=context, include_git_diff=include_git_diff
         )
 
-    def invoke_claude(self, prompt: str,
-                     model: Optional[str] = None,
-                     include_task_context: bool = True,
-                     **kwargs) -> Dict[str, Any]:
+    def invoke_claude(
+        self,
+        prompt: str,
+        model: Optional[str] = None,
+        include_task_context: bool = True,
+        **kwargs,
+    ) -> Dict[str, Any]:
         """Invoke Claude with optional task context
-        
+
         Args:
             prompt: Prompt for Claude
             model: Model to use (or alias)
             include_task_context: Whether to include current task context
             **kwargs: Additional arguments for invoke_claude
-            
+
         Returns:
             Claude response
         """
@@ -352,8 +595,9 @@ class GitAwareExtension(BaseExtension):
         self._current_task_state = updated_state
         return updated_state
 
-    def cleanup_task_branch(self, merge_back: bool = False,
-                           delete_branch: bool = True) -> None:
+    def cleanup_task_branch(
+        self, merge_back: bool = False, delete_branch: bool = True
+    ) -> None:
         """Clean up current task branch
 
         Args:
@@ -367,7 +611,7 @@ class GitAwareExtension(BaseExtension):
         self.git_manager.cleanup_task_branch(
             task_state=self._current_task_state,
             merge_back=merge_back,
-            delete_branch=delete_branch
+            delete_branch=delete_branch,
         )
 
         # Clear current task state
@@ -385,9 +629,11 @@ class GitAwareExtension(BaseExtension):
         return {
             "git_status": git_status,
             "subagent_environment": subagent_validation,
-            "current_task": self._current_task_state.to_dict() if self._current_task_state else None,
+            "current_task": (
+                self._current_task_state.to_dict() if self._current_task_state else None
+            ),
             "config_file": self.config_file,
-            "working_directory": self.working_dir
+            "working_directory": self.working_dir,
         }
 
     def get_available_subagents(self) -> Dict[str, str]:
@@ -409,10 +655,7 @@ class HookHandler:
             input_data = sys.stdin.read()
             return json.loads(input_data)
         except json.JSONDecodeError as e:
-            return {
-                "error": f"Invalid JSON input: {e}",
-                "raw_input": input_data
-            }
+            return {"error": f"Invalid JSON input: {e}", "raw_input": input_data}
 
     @staticmethod
     def write_hook_output(output: Dict[str, Any]) -> None:
@@ -433,10 +676,7 @@ class HookHandler:
         Returns:
             Block response dictionary
         """
-        return {
-            "decision": "block",
-            "reason": reason
-        }
+        return {"decision": "block", "reason": reason}
 
     @staticmethod
     def create_allow_response() -> Dict[str, Any]:
@@ -445,9 +685,7 @@ class HookHandler:
         Returns:
             Allow response dictionary
         """
-        return {
-            "decision": "approve"
-        }
+        return {"decision": "approve"}
 
     @staticmethod
     def is_stop_hook_active(context: HookInput) -> bool:

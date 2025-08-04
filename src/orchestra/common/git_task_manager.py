@@ -331,3 +331,84 @@ class GitTaskManager:
             "is_clean": is_clean,
             "working_dir": self.working_dir
         }
+
+    def create_worktree(self, worktree_path: str, branch_name: Optional[str] = None,
+                       base_ref: Optional[str] = None) -> str:
+        """Create a git worktree
+        
+        Args:
+            worktree_path: Path where worktree should be created
+            branch_name: Optional branch name for the worktree
+            base_ref: Base reference to create worktree from (defaults to HEAD)
+            
+        Returns:
+            Path to created worktree
+            
+        Raises:
+            subprocess.CalledProcessError: If git command fails
+        """
+        cmd = ["worktree", "add"]
+        
+        if branch_name:
+            cmd.extend(["-b", branch_name])
+            
+        cmd.append(worktree_path)
+        
+        if base_ref:
+            cmd.append(base_ref)
+            
+        self._run_git_command(cmd)
+        return worktree_path
+
+    def remove_worktree(self, worktree_path: str, force: bool = False) -> None:
+        """Remove a git worktree
+        
+        Args:
+            worktree_path: Path to worktree to remove
+            force: Force removal even if there are changes
+        """
+        cmd = ["worktree", "remove"]
+        if force:
+            cmd.append("--force")
+        cmd.append(worktree_path)
+        
+        try:
+            self._run_git_command(cmd)
+        except subprocess.CalledProcessError as e:
+            # Log but don't fail - worktree might already be removed
+            import logging
+            logging.warning(f"Failed to remove worktree: {e}")
+
+    def list_worktrees(self) -> List[Dict[str, str]]:
+        """List all git worktrees
+        
+        Returns:
+            List of worktree information dicts
+        """
+        result = self._run_git_command(["worktree", "list", "--porcelain"])
+        
+        worktrees = []
+        current_worktree = {}
+        
+        for line in result.stdout.strip().split("\n"):
+            if not line:
+                if current_worktree:
+                    worktrees.append(current_worktree)
+                    current_worktree = {}
+                continue
+                
+            if line.startswith("worktree "):
+                current_worktree["path"] = line.split(" ", 1)[1]
+            elif line.startswith("HEAD "):
+                current_worktree["head"] = line.split(" ", 1)[1]
+            elif line.startswith("branch "):
+                current_worktree["branch"] = line.split(" ", 1)[1]
+                
+        if current_worktree:
+            worktrees.append(current_worktree)
+            
+        return worktrees
+
+    def prune_worktrees(self) -> None:
+        """Prune stale worktree information"""
+        self._run_git_command(["worktree", "prune"])

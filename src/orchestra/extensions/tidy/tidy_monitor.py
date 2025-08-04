@@ -7,6 +7,7 @@ Integrates with Claude Code's Stop and SubagentStop hooks.
 """
 
 import os
+import sys
 import logging
 from typing import Dict, Optional, Any, List
 from datetime import datetime
@@ -59,7 +60,8 @@ class TidyMonitor(BaseExtension):
             "ignore_patterns": ["*_test.py", "migrations/*", "node_modules/*", "*.min.js"],
             "max_issues_shown": 10,
             "parallel_execution": True,
-            "check_timeout": 60
+            "check_timeout": 60,
+            "use_sidecar": False  # Run checks asynchronously in background
         }
         
         # Modified files tracking
@@ -167,7 +169,32 @@ class TidyMonitor(BaseExtension):
             self.logger.info("No files modified, skipping checks")
             return HookHandler.create_allow_response()
         
-        # Run checks
+        # Check if we should run in sidecar mode
+        if self.settings.get('use_sidecar', False):
+            # Start sidecar daemon and return immediately
+            from .commands.sidecar import TidySidecarCommand
+            
+            sidecar = TidySidecarCommand(logger=self.logger)
+            input_data = {
+                "action": "start",
+                "working_dir": self.working_dir,
+                "detected_tools": self.detected_tools,
+                "modified_files": self.modified_files
+            }
+            
+            result = sidecar.execute(input_data)
+            
+            if result.get("success"):
+                self.logger.info(f"Started sidecar daemon with PID {result.get('pid')}")
+                # Clear modified files
+                self.modified_files = []
+                # Return allow response - sidecar will handle fixes async
+                return HookHandler.create_allow_response()
+            else:
+                self.logger.error(f"Failed to start sidecar: {result.get('error')}")
+                # Fall back to synchronous mode
+        
+        # Run checks synchronously
         results = self._run_checks(self.modified_files)
         
         # Save results (convert ToolResult to dict for JSON serialization)
@@ -370,6 +397,8 @@ class TidyMonitor(BaseExtension):
             return self._cmd_status()
         elif command == "learn":
             return self._cmd_learn(args)
+        elif command == "sidecar":
+            return self._cmd_sidecar(args)
         else:
             return f"Unknown command: {command}"
     
@@ -400,6 +429,7 @@ class TidyMonitor(BaseExtension):
         self.settings['auto_fix'] = Confirm.ask("Enable auto-fix for fixable issues?", default=False)
         self.settings['strict_mode'] = Confirm.ask("Enable strict mode (fail on any issue)?", default=True)
         self.settings['parallel_execution'] = Confirm.ask("Run tools in parallel?", default=True)
+        self.settings['use_sidecar'] = Confirm.ask("Enable sidecar mode (async background fixes)?", default=False)
         
         # Add custom commands
         if Confirm.ask("\nWould you like to add custom lint/format commands?", default=False):
@@ -581,6 +611,7 @@ class TidyMonitor(BaseExtension):
         panel_content.append(f"  Auto-fix: {'Yes' if self.settings.get('auto_fix', False) else 'No'}")
         panel_content.append(f"  Strict Mode: {'Yes' if self.settings.get('strict_mode', True) else 'No'}")
         panel_content.append(f"  Parallel Execution: {'Yes' if self.settings.get('parallel_execution', True) else 'No'}")
+        panel_content.append(f"  Sidecar Mode: {'Yes' if self.settings.get('use_sidecar', False) else 'No'}")
         
         # Last check
         if self.last_check:
@@ -628,25 +659,139 @@ class TidyMonitor(BaseExtension):
             return f"❌ Added DON'T example: {example}"
         else:
             return "Usage: /tidy learn <do|dont> <example>"
+    
+    def _cmd_sidecar(self, args: str) -> str:
+        """Handle sidecar commands"""
+        from .commands.sidecar import TidySidecarCommand
+        
+        parts = args.split(None, 1)
+        action = parts[0] if parts else "status"
+        
+        # Initialize sidecar command
+        sidecar = TidySidecarCommand(logger=self.logger)
+        
+        # Prepare input data
+        input_data = {
+            "action": action,
+            "working_dir": self.working_dir,
+            "detected_tools": self.detected_tools
+        }
+        
+        # Execute sidecar command
+        result = sidecar.execute(input_data)
+        
+        if not result.get("success"):
+            error = result.get("error", "Unknown error")
+            self.console.print(f"[red]❌ Sidecar error: {error}[/red]")
+            return f"Sidecar error: {error}"
+        
+        # Format response based on action
+        if action == "start":
+            pid = result.get("pid", "unknown")
+            self.console.print(f"[green]✅ Sidecar daemon started (PID: {pid})[/green]")
+            self.console.print("🔧 Running fixes in background...")
+            self.console.print("Use '/tidy sidecar status' to check progress")
+            return f"Sidecar started with PID {pid}"
+            
+        elif action == "status":
+            status = result.get("status", "unknown")
+            self.console.print(f"\n[bold]🚗 Sidecar Status: {status}[/bold]")
+            
+            if status == "completed":
+                results = result.get("results", {})
+                fixes = results.get("fixes_applied", [])
+                if fixes:
+                    self.console.print(f"✅ Fixed: {', '.join(fixes)}")
+                    self.console.print("Use '/tidy sidecar merge' to apply fixes")
+                else:
+                    self.console.print("No fixes were applied")
+                    
+            elif status == "running":
+                state = result.get("state", {})
+                started = state.get("started_at", "unknown")
+                self.console.print(f"Started: {started}")
+                
+            return result.get("message", "Status checked")
+            
+        elif action == "stop":
+            self.console.print("[yellow]⏹️  Stopping sidecar daemon...[/yellow]")
+            return result.get("message", "Sidecar stopped")
+            
+        elif action == "merge":
+            files_updated = result.get("files_updated", 0)
+            if files_updated > 0:
+                self.console.print(f"[green]✅ Merged {files_updated} fixed files[/green]")
+            else:
+                self.console.print("No changes to merge")
+            return result.get("message", "Merge completed")
+            
+        else:
+            return "Usage: /tidy sidecar <start|status|stop|merge>"
 
 
-# Main entry point for hook integration
+# Main entry point for hook integration and CLI
 def main() -> None:
-    """Main entry point when called as a hook"""
-    # Read hook input
-    hook_input = HookHandler.read_hook_input()
+    """CLI interface and hook handler"""
+    import sys
     
-    # Get hook event name
-    hook_event = hook_input.get('hook_event_name', '')
+    if len(sys.argv) < 2:
+        # Show help when no command provided
+        console = Console()
+        console.print("\n[bold]🧹 Tidy Monitor[/bold] - Code Quality Extension\n")
+        console.print("[yellow]Usage:[/yellow] tidy_monitor.py <command> [args]\n")
+        console.print("[yellow]Commands:[/yellow]")
+        console.print("  init       - Initialize tidy for your project")
+        console.print("  check      - Run code quality checks")
+        console.print("  fix        - Auto-fix code quality issues")
+        console.print("  status     - Show current configuration")
+        console.print("  learn      - Add do/don't examples")
+        console.print("  sidecar    - Manage background fix daemon")
+        console.print("  hook       - Handle Claude Code hook (internal)")
+        return
     
-    # Create or get monitor instance
-    monitor = TidyMonitor()
+    command = sys.argv[1]
     
-    # Handle the hook
-    response = monitor.handle_hook(hook_event, hook_input)
-    
-    # Write response
-    HookHandler.write_hook_output(response)
+    # Handle hook command specially
+    if command == "hook":
+        # Read hook input
+        hook_input = HookHandler.read_hook_input()
+        
+        # Get hook event name
+        hook_event = hook_input.get('hook_event_name', '')
+        
+        # Create or get monitor instance
+        monitor = TidyMonitor()
+        
+        # Handle the hook
+        response = monitor.handle_hook(hook_event, hook_input)
+        
+        # Write response
+        HookHandler.write_hook_output(response)
+    else:
+        # Handle slash commands
+        monitor = TidyMonitor()
+        
+        # Get args if any
+        args = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else ""
+        
+        # Map commands to slash command handlers
+        if command == "init":
+            result = monitor._cmd_init()
+        elif command == "check":
+            result = monitor._cmd_check(args)
+        elif command == "fix":
+            result = monitor._cmd_fix(args)
+        elif command == "status":
+            result = monitor._cmd_status()
+        elif command == "learn":
+            result = monitor._cmd_learn(args)
+        elif command == "sidecar":
+            result = monitor._cmd_sidecar(args)
+        else:
+            console = Console()
+            console.print(f"[red]Unknown command: {command}[/red]")
+            console.print("Run 'tidy_monitor.py' for help")
+            return
 
 
 if __name__ == "__main__":

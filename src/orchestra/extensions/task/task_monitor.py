@@ -87,6 +87,31 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
         super().save_config(config)
 
+    def hook_compatible_input(self, id: int, prompt: str, current_input: str) -> str:
+        """behaves like input() in tty mode, but is compatible with Claude Code hooks"""
+        if os.isatty(0):
+            # If we're in a TTY, just use the normal input
+            return input(prompt)
+        if self.last_prompt_id == id:
+            return current_input
+        elif self.last_prompt_id == id - 1:
+            # If we're not in a TTY, we need to use the Claude Code hooks
+            print('{"continue": false, ' \
+            # '"decision": "block", ' \
+            '"stopReason": "Enable auto-fix? [y/n]", ' \
+            '"suppressOutput": false, ' \
+            '"output": "Please provide more information.",' \
+            '"hookSpecificOutput": {' \
+                '"hookEventName": "UserPromptSubmit",' \
+                '"additionalContext": "Add to context"}' \
+            '}', file=sys.stdout)
+        elif self.last_prompt_id < id - 1:
+            match = self.response_by_id.get(id - 1, {})
+            if match:
+                return match.get("output", current_input)
+        self.last_prompt_id = id
+        return current_input
+
     # Example: 2025-08-02 05:49:23,914 - task_monitor - INFO - handle_hook:108 - Handling hook: PostToolUse
     # 2025-08-02 05:49:23,914 - task_monitor - DEBUG - handle_hook:109 - Hook context: {
     #   "session_id": "05e96406-4f76-4790-9058-d9032e834f3b",
@@ -113,6 +138,10 @@ class TaskAlignmentMonitor(GitAwareExtension):
         # coontext will be type HookInputTodo
         if hook_type == "Stop":
             return self._handle_stop_hook(context)
+        elif hook_type == "UserPromptSubmit":
+            # Handle UserPromptSubmit hook specifically
+            self.logger.debug("Handling UserPromptSubmit hook")
+            return self._handle_user_prompt_submit_hook(context)
         elif hook_type == "SubagentStop":
             return self._handle_subagent_stop_hook(context)
         elif hook_type == "TodoWrite":
@@ -335,10 +364,10 @@ class TaskAlignmentMonitor(GitAwareExtension):
                 # If this is a TodoWrite, sync the todos from tool_input
                 todos = tool_input.get('todos', [])
                 self.logger.info(f"PostToolUse TodoWrite: {len(todos)} todos to sync")
-                
+
                 # Sync Claude's todos into our task monitor state
                 self._sync_claude_todos(todos)
-                
+
                 # Save the updated state
                 self.save_config()
 
@@ -488,15 +517,15 @@ Respond with JSON in this exact format:
 
     def _sync_claude_todos(self, todos: List[Dict[str, Any]]) -> None:
         """Sync Claude's todo list into task monitor requirements
-        
+
         Args:
             todos: List of todo items from Claude's TodoWrite tool
         """
         self.logger.info(f"Syncing {len(todos)} todos from Claude")
-        
+
         # Clear existing requirements
         self.requirements = []
-        
+
         # Convert Claude's todos to TaskRequirements
         for i, todo in enumerate(todos):
             # Map Claude's priority (high/medium/low) to numeric (1-5)
@@ -506,11 +535,11 @@ Respond with JSON in this exact format:
                 'low': 3
             }
             priority = priority_map.get(todo.get('priority', 'medium'), 2)
-            
+
             # Map Claude's status to completed boolean
             status = todo.get('status', 'pending')
             completed = status == 'completed'
-            
+
             # Create TaskRequirement
             requirement = TaskRequirement(
                 id=todo.get('id', str(i)),
@@ -518,10 +547,10 @@ Respond with JSON in this exact format:
                 priority=priority,
                 completed=completed
             )
-            
+
             self.requirements.append(requirement)
             self.logger.debug(f"Synced todo: {requirement.description} (P{priority}, {'completed' if completed else 'pending'})")
-        
+
         # Update task description if we have todos
         if todos and not self.task:
             # Use the first high-priority todo as the task description
@@ -530,7 +559,7 @@ Respond with JSON in this exact format:
                 self.task = f"Task: {high_priority_todos[0].get('content', 'Unnamed task')}"
             else:
                 self.task = f"Task with {len(todos)} requirements"
-        
+
         self.logger.info(f"Task monitor state synced: {len(self.requirements)} requirements")
 
 
@@ -848,17 +877,17 @@ def main() -> None:
         print("   2. Task monitor syncs these todos via PostToolUse hook")
         print("   3. Use '/task status' to see your current progress")
         print("   4. Task monitor provides focus guidance based on Claude's todos")
-        
+
         # Check if Orchestra is properly set up
         bootstrap_local = Path(".claude/orchestra/bootstrap.sh")
         bootstrap_global = Path.home() / ".claude/orchestra/bootstrap.sh"
-        
+
         if not bootstrap_local.exists() and not bootstrap_global.exists():
             print("\n⚠️  Orchestra not detected. Please run:")
             print("   orchestra enable task")
         else:
             print("\n✅ Orchestra detected - hooks should be working")
-        
+
         # Check if .claude/orchestra/ is in .gitignore
         working_dir = os.environ.get('CLAUDE_WORKING_DIR', '.')
         gitignore_path = Path(working_dir) / ".gitignore"
@@ -886,7 +915,7 @@ def main() -> None:
 
         if progress['percentage'] < 100:
             print(f"\n➡️  Next: {monitor._get_next_action()}")
-        
+
         print("\n🔄 Auto-synced from Claude's todo list")
 
     elif command == "reset":

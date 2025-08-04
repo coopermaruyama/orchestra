@@ -1,10 +1,17 @@
 {
   "enabled": true,
-  "current_session": "",
   "checkpoints": [
     {
-      "id": "`test-1`",
-      "prompt_preview": "Test prompt"
+      "id": "checkpoint-0",
+      "commit_sha": "c5e5b9a391cf10e7d1b5997b6b4192b11b2cfe9e",
+      "prompt_preview": "Test checkpoint creation... {   \"user_prompt\": \"Test checkpoint creation\",   \"ti",
+      "timestamp": "2025-08-03T19:05:04"
+    },
+    {
+      "id": "checkpoint-1",
+      "commit_sha": "d7c3927be2b99c47f1282ec871b1449fc783efb7",
+      "prompt_preview": "Test with session info",
+      "timestamp": "2025-08-03T19:47:13"
     }
   ],
   "settings": {
@@ -12,5 +19,5 @@
     "auto_cleanup": true,
     "include_untracked": false
   },
-  "updated": "2025-08-02T07:08:00.207293"
+  "updated": "2025-08-03T20:37:53.411359"
 }
