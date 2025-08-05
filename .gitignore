@@ -12,3 +12,4 @@ test_project.claude/orchestra/
 dist
 .coverage
 test_hook.txt
+.claude/orchestra/.*.json

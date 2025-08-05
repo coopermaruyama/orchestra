@@ -75,16 +75,12 @@ class TestResult:
 
 class TesterMonitor(GitAwareExtension):
     def __init__(self, config_path: Optional[str] = None) -> None:
-        # Use CLAUDE_WORKING_DIR if available, otherwise use TMPDIR
+        # Use CLAUDE_WORKING_DIR if available, otherwise use common project directory logic
         working_dir = os.environ.get("CLAUDE_WORKING_DIR")
-        if working_dir:
-            log_dir = os.path.join(working_dir, ".claude", "logs")
-        else:
-            # Fallback to system temp directory
-            import tempfile
-
-            temp_dir = os.environ.get("TMPDIR", tempfile.gettempdir())
-            log_dir = os.path.join(temp_dir, "claude-tester")
+        if not working_dir:
+            working_dir = self._get_project_directory()
+            
+        log_dir = os.path.join(working_dir, ".claude", "logs")
 
         os.makedirs(log_dir, exist_ok=True)
         log_file = os.path.join(log_dir, "tester_monitor.log")

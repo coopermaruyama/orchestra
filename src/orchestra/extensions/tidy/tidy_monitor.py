@@ -52,8 +52,10 @@ class TidyMonitor(BaseExtension):
             # We're being called from within an Orchestra Claude invocation
             # Exit silently to prevent recursive loops
             sys.exit(0)
-        # Use CLAUDE_WORKING_DIR if available
-        working_dir = os.environ.get("CLAUDE_WORKING_DIR", ".")
+        # Use CLAUDE_WORKING_DIR if available, otherwise use common project directory logic
+        working_dir = os.environ.get("CLAUDE_WORKING_DIR")
+        if not working_dir:
+            working_dir = self._get_project_directory()
 
         # Set up logging
         log_dir = os.path.join(working_dir, ".claude", "logs")

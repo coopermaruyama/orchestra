@@ -178,7 +178,7 @@ class BaseExtension(ABC):
             config_file: Path to configuration file (for state, not settings)
             working_dir: Working directory for the extension
         """
-        self.working_dir = working_dir or os.getcwd()
+        self.working_dir = working_dir or self._get_project_directory()
         self.orchestra_dir = os.path.join(self.working_dir, ".claude", "orchestra")
         os.makedirs(self.orchestra_dir, exist_ok=True)
 
@@ -276,6 +276,48 @@ class BaseExtension(ABC):
         
         all_settings = self.load_settings()
         return all_settings.get(extension_name, {})
+
+    def _get_project_directory(self) -> str:
+        """Get project directory with fallback hierarchy
+        
+        Priority order (highest to lowest):
+        1. $ORCH_PROJECT_DIR
+        2. $CLAUDE_PROJECT_DIR  
+        3. git rev-parse --show-toplevel
+        4. $PWD
+        
+        Returns:
+            Absolute path to the project directory
+        """
+        # Check ORCH_PROJECT_DIR first
+        orch_dir = os.environ.get("ORCH_PROJECT_DIR")
+        if orch_dir and os.path.isdir(orch_dir):
+            return os.path.abspath(orch_dir)
+        
+        # Check CLAUDE_PROJECT_DIR
+        claude_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+        if claude_dir and os.path.isdir(claude_dir):
+            return os.path.abspath(claude_dir)
+        
+        # Try git root
+        try:
+            import subprocess
+            result = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True,
+                text=True,
+                timeout=5
+            )
+            if result.returncode == 0:
+                git_root = result.stdout.strip()
+                if git_root and os.path.isdir(git_root):
+                    return os.path.abspath(git_root)
+        except (subprocess.SubprocessError, FileNotFoundError, OSError):
+            # Git not available or not in a git repo
+            pass
+        
+        # Fall back to current working directory
+        return os.path.abspath(os.getcwd())
 
     def is_claude_code_environment(self) -> bool:
         """Check if running inside Claude Code"""
