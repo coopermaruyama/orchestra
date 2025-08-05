@@ -1,0 +1,7 @@
+{
+  "plancheck": {
+    "enabled": true,
+    "plans_directory": "plans",
+    "auto_save": true
+  }
+}

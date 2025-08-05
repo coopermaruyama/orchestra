@@ -99,6 +99,18 @@ class Orchestra:
                 ],
                 "monitor_script": "tester_monitor.py",
             },
+            "plancheck": {
+                "name": "Plancheck",
+                "description": "Monitors ExitPlanMode tool usage and blocks for plan review. Saves plans to organized files and creates plan-specific checkpoints via TimeMachine integration.",
+                "commands": ["plancheck status"],
+                "features": [
+                    "Detects ExitPlanMode tool usage",
+                    "Blocks for plancheck agent review",
+                    "Saves plans to .claude/orchestra/plans/",
+                    "Creates plan-specific checkpoints",
+                ],
+                "monitor_script": "plancheck_monitor.py",
+            },
         }
 
     def render_template(self, template_name: str, context: Dict[str, Any]) -> str:
@@ -106,7 +118,7 @@ class Orchestra:
         template = self.jinja_env.get_template(template_name)
         return template.render(**context)
 
-    def enable(self, extension: str, scope: str = "global") -> None:
+    def enable(self, extension: str, scope: str = "project") -> None:
         """Enable an Orchestra extension"""
         if extension not in self.extensions:
             self.console.print(
@@ -121,23 +133,23 @@ class Orchestra:
         if scope == "global":
             commands_dir = self.global_dir
             scripts_dir = self.home / ".claude" / "orchestra" / extension
+            
+            # Warning for global scope enablement
+            self.console.print(
+                "\n[bold yellow]⚠️  Warning: Global scope enablement[/bold yellow]"
+            )
+            self.console.print(
+                "[yellow]Enabling in global scope (~/.claude/commands/) can cause issues and conflicts.[/yellow]"
+            )
+            self.console.print(
+                "[yellow]Orchestra is designed to work at the project level for better isolation.[/yellow]"
+            )
+            self.console.print(
+                "[yellow]Consider using project scope (default) unless global commands are specifically needed.[/yellow]\n"
+            )
         else:
             commands_dir = self.local_dir
             scripts_dir = Path(".claude") / "orchestra" / extension
-
-            # Warning for project scope enablement
-            self.console.print(
-                "\n[bold yellow]⚠️  Warning: Project scope enablement[/bold yellow]"
-            )
-            self.console.print(
-                "[yellow]Enabling in project scope (.claude/commands/) may conflict with global enablement.[/yellow]"
-            )
-            self.console.print(
-                "[yellow]Claude Code does not support conflicts between user and project level commands.[/yellow]"
-            )
-            self.console.print(
-                "[yellow]Consider using global enablement (default) unless project-specific commands are required.[/yellow]\n"
-            )
 
         # Create directories
         commands_dir.mkdir(parents=True, exist_ok=True)

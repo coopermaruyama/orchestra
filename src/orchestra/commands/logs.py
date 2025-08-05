@@ -37,31 +37,73 @@ def logs(extension: str, tail: bool, clear: bool, no_truncate: bool) -> None:
             log_patterns.append("tidy.log")
         elif extension == "tester":
             log_patterns.append("tester.log")
+        elif extension == "plancheck":
+            log_patterns.append("plancheck.log")
         else:
             console.print(f"[bold red]❌ Unknown extension:[/bold red] {extension}")
             console.print(
-                "[dim]Valid extensions: task, timemachine, tidy, tester[/dim]"
+                "[dim]Valid extensions: task, timemachine, tidy, tester, plancheck[/dim]"
             )
             return
     else:
         # Look for all Orchestra logs
         log_patterns.extend(
-            ["task_monitor.log", "timemachine.log", "tidy.log", "tester.log"]
+            ["task_monitor.log", "timemachine.log", "tidy.log", "tester.log", "plancheck.log"]
         )
 
-    # Search for log files in common temp directories
+    # Search for log files in Orchestra project directories and temp directories
     log_files = []
-    temp_roots = []
+    search_roots = []
 
+    # First, try to find logs in Orchestra project directories
+    # Use the same project directory detection logic as extensions
+    project_dirs = []
+    
+    # Check ORCH_PROJECT_DIR
+    orch_dir = os.environ.get("ORCH_PROJECT_DIR")
+    if orch_dir and os.path.isdir(orch_dir):
+        project_dirs.append(orch_dir)
+    
+    # Check CLAUDE_PROJECT_DIR  
+    claude_dir = os.environ.get("CLAUDE_PROJECT_DIR")
+    if claude_dir and os.path.isdir(claude_dir):
+        project_dirs.append(claude_dir)
+    
+    # Check git root
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=os.getcwd()
+        )
+        if result.returncode == 0:
+            git_root = result.stdout.strip()
+            if git_root and os.path.isdir(git_root):
+                project_dirs.append(git_root)
+    except (subprocess.SubprocessError, FileNotFoundError, OSError):
+        pass
+    
+    # Add current working directory
+    project_dirs.append(os.getcwd())
+    
+    # Add .claude/logs paths from project directories
+    for project_dir in project_dirs:
+        logs_dir = os.path.join(project_dir, ".claude", "logs")
+        if os.path.exists(logs_dir):
+            search_roots.append(logs_dir)
+    
+    # Also search temp directories as fallback
     if platform.system() == "Darwin":  # macOS
-        temp_roots.extend(["/var/folders", "/tmp"])
+        search_roots.extend(["/var/folders", "/tmp"])
     elif platform.system() == "Linux":
-        temp_roots.extend(["/tmp", "/var/tmp"])
+        search_roots.extend(["/tmp", "/var/tmp"])
     elif platform.system() == "Windows":
-        temp_roots.extend([os.environ.get("TEMP", ""), os.environ.get("TMP", "")])
+        search_roots.extend([os.environ.get("TEMP", ""), os.environ.get("TMP", "")])
 
     # Find log files
-    for root in temp_roots:
+    for root in search_roots:
         if not root or not os.path.exists(root):
             continue
 
@@ -78,7 +120,6 @@ def logs(extension: str, tail: bool, clear: bool, no_truncate: bool) -> None:
                     check=False,
                     capture_output=True,
                     text=True,
-                    stderr=subprocess.DEVNULL,
                 )
                 if result.returncode == 0 and result.stdout:
                     files = result.stdout.strip().split("\n")
@@ -165,6 +206,9 @@ def logs(extension: str, tail: bool, clear: bool, no_truncate: bool) -> None:
             elif "tester.log" in log_file:
                 ext_name = "Tester"
                 ext_color = "yellow"
+            elif "plancheck.log" in log_file:
+                ext_name = "Plancheck"
+                ext_color = "blue"
             else:
                 ext_name = "Unknown"
                 ext_color = "white"

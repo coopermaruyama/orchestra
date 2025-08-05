@@ -11,15 +11,16 @@ console = Console()
 @click.command()
 @click.argument("extension", required=False)
 @click.option(
-    "--project", is_flag=True, help="Enable in project scope instead of global"
+    "--global", "global_scope", is_flag=True, help="Enable in global scope instead of project (not recommended)"
 )
-def enable(extension, project):
+def enable(extension, global_scope):
     """Enable an Orchestra extension
 
     If no extension is specified, enables all available extensions.
+    Defaults to project scope for better isolation.
     """
     orchestra = Orchestra()
-    scope = "local" if project else "global"
+    scope = "global" if global_scope else "project"
 
     if extension:
         # Enable specific extension
