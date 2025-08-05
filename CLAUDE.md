@@ -2,4 +2,4 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-@.claude/orchestra/memories/index.md
+@.claude/memories/index.md

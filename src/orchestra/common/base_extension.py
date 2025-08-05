@@ -175,18 +175,20 @@ class BaseExtension(ABC):
         """Initialize base extension
 
         Args:
-            config_file: Path to configuration file
+            config_file: Path to configuration file (for state, not settings)
             working_dir: Working directory for the extension
         """
         self.working_dir = working_dir or os.getcwd()
+        self.orchestra_dir = os.path.join(self.working_dir, ".claude", "orchestra")
+        os.makedirs(self.orchestra_dir, exist_ok=True)
 
-        # If no config file specified, use the new orchestra directory structure
+        # Settings file is shared across all extensions
+        self.settings_file = os.path.join(self.orchestra_dir, "settings.json")
+        
+        # State file is extension-specific with dot prefix
         if config_file is None:
-            orchestra_dir = os.path.join(self.working_dir, ".claude", "orchestra")
-            os.makedirs(orchestra_dir, exist_ok=True)
-            config_file = os.path.join(
-                orchestra_dir, self.get_default_config_filename()
-            )
+            state_filename = f".{self.get_default_state_filename()}"
+            config_file = os.path.join(self.orchestra_dir, state_filename)
 
         self.config_file = config_file
         self.last_prompt_id = -1
@@ -194,12 +196,22 @@ class BaseExtension(ABC):
 
         # Initialize session state manager
         # Use the config filename (without .json) as the extension name
-        extension_name = Path(self.get_default_config_filename()).stem
+        extension_name = Path(self.get_default_state_filename()).stem
         self._state_manager = SessionStateManager(extension_name)
 
     @abstractmethod
     def get_default_config_filename(self) -> str:
-        """Get the default configuration file name for this extension"""
+        """Get the default configuration file name for this extension (DEPRECATED)
+        
+        Use get_default_state_filename() instead.
+        """
+    
+    def get_default_state_filename(self) -> str:
+        """Get the default state file name for this extension
+        
+        Defaults to the config filename for backward compatibility.
+        """
+        return self.get_default_config_filename()
 
     @abstractmethod
     def handle_hook(self, hook_event: str, context: Dict[str, Any]) -> Dict[str, Any]:
@@ -224,13 +236,46 @@ class BaseExtension(ABC):
         return {}
 
     def save_config(self, config: Dict[str, Any]) -> None:
-        """Save configuration to file"""
+        """Save configuration to file (state file)"""
         try:
             os.makedirs(os.path.dirname(self.config_file), exist_ok=True)
             with open(self.config_file, "w") as f:
                 json.dump(config, f, indent=2)
         except OSError as e:
             print(f"Error: Failed to save config to {self.config_file}: {e}")
+    
+    def load_settings(self) -> Dict[str, Any]:
+        """Load shared settings from settings.json"""
+        if os.path.exists(self.settings_file):
+            try:
+                with open(self.settings_file) as f:
+                    return json.load(f)
+            except (OSError, json.JSONDecodeError) as e:
+                print(f"Warning: Failed to load settings from {self.settings_file}: {e}")
+        return {}
+    
+    def save_settings(self, settings: Dict[str, Any]) -> None:
+        """Save shared settings to settings.json"""
+        try:
+            with open(self.settings_file, "w") as f:
+                json.dump(settings, f, indent=2)
+        except OSError as e:
+            print(f"Error: Failed to save settings to {self.settings_file}: {e}")
+    
+    def get_extension_settings(self, extension_name: Optional[str] = None) -> Dict[str, Any]:
+        """Get settings for this extension from the shared settings file
+        
+        Args:
+            extension_name: Name of the extension (defaults to state filename stem)
+            
+        Returns:
+            Settings dictionary for this extension
+        """
+        if extension_name is None:
+            extension_name = Path(self.get_default_state_filename()).stem
+        
+        all_settings = self.load_settings()
+        return all_settings.get(extension_name, {})
 
     def is_claude_code_environment(self) -> bool:
         """Check if running inside Claude Code"""

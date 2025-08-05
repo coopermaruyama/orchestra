@@ -72,28 +72,32 @@ class TaskAlignmentMonitor(GitAwareExtension):
 
     def load_config(self) -> Dict[str, Any]:
         """Load or create configuration"""
-        config = super().load_config()
+        # Load state from the state file (dot-prefixed)
+        state = super().load_config()
+        
+        # Load settings from shared settings.json
+        self.settings = self.get_extension_settings("task")
+        if not self.settings:
+            # Default settings if not found in settings.json
+            self.settings = {"strict_mode": True, "max_deviations": 3}
 
-        self.task = config.get("task", "")
+        # Load state data
+        self.task = state.get("task", "")
         self.requirements = [
-            TaskRequirement.from_dict(req) for req in config.get("requirements", [])
+            TaskRequirement.from_dict(req) for req in state.get("requirements", [])
         ]
-        self.settings = config.get(
-            "settings", {"strict_mode": True, "max_deviations": 3}
-        )
-        self.stats = config.get("stats", {"deviations": 0, "commands": 0})
-        self.last_stop_message_id = config.get("last_stop_message_id")
-        self.last_review_request_message_id = config.get("last_review_request_message_id")
+        self.stats = state.get("stats", {"deviations": 0, "commands": 0})
+        self.last_stop_message_id = state.get("last_stop_message_id")
+        self.last_review_request_message_id = state.get("last_review_request_message_id")
 
-        return config
+        return state
 
     def save_config(self, config: Optional[Dict[str, Any]] = None) -> None:
-        """Save configuration and progress"""
+        """Save state (not settings - those go in settings.json)"""
         if config is None:
             config = {
                 "task": self.task,
                 "requirements": [req.to_dict() for req in self.requirements],
-                "settings": self.settings,
                 "stats": self.stats,
                 "last_stop_message_id": self.last_stop_message_id,
                 "last_review_request_message_id": self.last_review_request_message_id,

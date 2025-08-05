@@ -97,25 +97,33 @@ class TimeMachineMonitor(GitAwareExtension):
             self.logger.error(f"Error checking git-wip availability: {e}")
 
     def load_config(self) -> Dict[str, Any]:
-        """Load or create configuration"""
-        config = super().load_config()
+        """Load state and settings"""
+        # Load state from the state file (dot-prefixed)
+        state = super().load_config()
+        
+        # Load settings from shared settings.json
+        self.settings = self.get_extension_settings("timemachine")
+        if not self.settings:
+            # Default settings if not found in settings.json
+            self.settings = {
+                "enabled": True,
+                "max_checkpoints": 100, 
+                "auto_cleanup": True, 
+                "include_untracked": False
+            }
 
-        self.enabled = config.get("enabled", True)
-        self.checkpoint_counter = config.get("checkpoint_counter", 0)
-        self.settings = config.get(
-            "settings",
-            {"max_checkpoints": 100, "auto_cleanup": True, "include_untracked": False},
-        )
+        # Load state data
+        self.enabled = state.get("enabled", self.settings.get("enabled", True))
+        self.checkpoint_counter = state.get("checkpoint_counter", 0)
 
-        return config
+        return state
 
     def save_config(self, config: Optional[Dict[str, Any]] = None) -> None:
-        """Save configuration and checkpoint counter"""
+        """Save state (not settings - those go in settings.json)"""
         if config is None:
             config = {
                 "enabled": self.enabled,
                 "checkpoint_counter": self.checkpoint_counter,
-                "settings": self.settings,
                 "updated": datetime.now().isoformat(),
             }
 

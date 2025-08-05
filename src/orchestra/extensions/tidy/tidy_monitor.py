@@ -74,21 +74,7 @@ class TidyMonitor(BaseExtension):
 
         # Simplified tidy state
         self.last_check: Dict[str, Any] = {}
-        self.settings = {
-            "strict_mode": True,
-            "check_on_file_change": True,
-            "ignore_patterns": [
-                "*_test.py",
-                "*/migrations/*",
-                "*/node_modules/*",
-                "*.min.js",
-                "*/.venv/*",
-                "*/.git/*",
-            ],
-            "max_issues_shown": 10,
-            "severity_filter": "Warning",  # Minimum severity: Error, Warning, Information, Hint
-        }
-
+        
         # Modified files tracking
         self.modified_files: List[str] = []
 
@@ -100,21 +86,40 @@ class TidyMonitor(BaseExtension):
         return "tidy.json"
 
     def load_config(self) -> Dict[str, Any]:
-        """Load or create configuration"""
-        config = super().load_config()
+        """Load state and settings"""
+        # Load state from the state file (dot-prefixed)
+        state = super().load_config()
+        
+        # Load settings from shared settings.json
+        self.settings = self.get_extension_settings("tidy")
+        if not self.settings:
+            # Default settings if not found in settings.json
+            self.settings = {
+                "strict_mode": True,
+                "check_on_file_change": True,
+                "ignore_patterns": [
+                    "*_test.py",
+                    "*/migrations/*",
+                    "*/node_modules/*",
+                    "*.min.js",
+                    "*/.venv/*",
+                    "*/.git/*",
+                ],
+                "max_issues_shown": 10,
+                "severity_filter": "Warning",  # Minimum severity: Error, Warning, Information, Hint
+            }
 
-        if config:
-            self.last_check = config.get("last_check", {})
-            self.settings.update(config.get("settings", {}))
+        # Load state data
+        if state:
+            self.last_check = state.get("last_check", {})
 
-        return config
+        return state
 
     def save_config(self, config: Optional[Dict[str, Any]] = None) -> None:
-        """Save configuration"""
+        """Save state (not settings - those go in settings.json)"""
         if config is None:
             config = {
                 "last_check": self.last_check,
-                "settings": self.settings,
                 "updated": datetime.now().isoformat(),
             }
 

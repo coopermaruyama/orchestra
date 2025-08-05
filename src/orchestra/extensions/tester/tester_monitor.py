@@ -145,32 +145,33 @@ class TesterMonitor(GitAwareExtension):
         self.logger.info(f"Saved test result to {result_file}")
 
     def load_config(self) -> Dict[str, Any]:
-        """Load or create configuration"""
-        config = super().load_config()
+        """Load state"""
+        # Load state from the state file (dot-prefixed)
+        state = super().load_config()
 
-        # Load calibration from memory file first, fallback to config
+        # Load calibration from memory file first, fallback to state
         memory_calibration = self.load_calibration_memory()
         if memory_calibration:
             self.calibration = TestCalibration.from_dict(memory_calibration)
             self.logger.info("Loaded calibration from memory file")
-        elif "calibration" in config:
-            self.calibration = TestCalibration.from_dict(config["calibration"])
+        elif "calibration" in state:
+            self.calibration = TestCalibration.from_dict(state["calibration"])
             # Migrate to memory file
-            self.save_calibration_memory(config["calibration"])
+            self.save_calibration_memory(state["calibration"])
             self.logger.info("Migrated calibration to memory file")
 
         # Load test results
         self.test_results = [
-            TestResult(**result) for result in config.get("test_results", [])
+            TestResult(**result) for result in state.get("test_results", [])
         ]
 
         # Load synced todos
-        self.synced_todos = config.get("synced_todos", [])
+        self.synced_todos = state.get("synced_todos", [])
 
-        return config
+        return state
 
     def save_config(self, config: Optional[Dict[str, Any]] = None) -> None:
-        """Save configuration"""
+        """Save state"""
         if config is None:
             config = {
                 "calibration": self.calibration.to_dict() if self.calibration else None,
