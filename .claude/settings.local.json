@@ -11,9 +11,7 @@
       {
         "matcher": "*",
         "hooks": [
-          {
-            "command": "./claude/dev.py Stop"
-          }
+
         ]
       }
     ]

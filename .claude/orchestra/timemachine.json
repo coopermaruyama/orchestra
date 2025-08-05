@@ -2,54 +2,6 @@
   "enabled": true,
   "checkpoints": [
     {
-      "id": "checkpoint-64",
-      "commit_sha": "384f6f888ceb40ee189d837b5d6ed246b2598724",
-      "prompt_preview": "Analyze the following for task deviations:\n\nTRANSCRIPT:\n\n            User: I nee",
-      "timestamp": "2025-08-04T08:07:12.716809"
-    },
-    {
-      "id": "checkpoint-65",
-      "commit_sha": "3affdad0511367a63ddac83830a9dc1abb4b874d",
-      "prompt_preview": "Analyze the following for task deviations:\n\nTRANSCRIPT:\n\n            User: Updat",
-      "timestamp": "2025-08-04T08:07:18.795543"
-    },
-    {
-      "id": "checkpoint-66",
-      "commit_sha": "c5d43ee0b50ca6619e37719347b4fb13bb04d6da",
-      "prompt_preview": "Analyze the following for task deviations:\n\nTRANSCRIPT:\n\n            User: I nee",
-      "timestamp": "2025-08-04T08:07:20.162885"
-    },
-    {
-      "id": "checkpoint-67",
-      "commit_sha": "b2a7dcedbae401dbf06af19e7772854e53dfb622",
-      "prompt_preview": "Current Task: Task: Run pytest\n\nRequirements Status:\n- \u274c INCOMPLETE: Run pytest ",
-      "timestamp": "2025-08-04T08:07:22.070503"
-    },
-    {
-      "id": "checkpoint-68",
-      "commit_sha": "e59f739f2ae84acf9e2e36f07ff47371675216e6",
-      "prompt_preview": "Analyze the following for task deviations:\n\nTRANSCRIPT:\n\n            User: I nee",
-      "timestamp": "2025-08-04T08:07:26.987876"
-    },
-    {
-      "id": "checkpoint-69",
-      "commit_sha": "ee40c1cd29b6756291fcba63730b5e5ad04d9b66",
-      "prompt_preview": "Analyze the following for task deviations:\n\nTRANSCRIPT:\n\n            User: I nee",
-      "timestamp": "2025-08-04T08:07:28.979310"
-    },
-    {
-      "id": "checkpoint-70",
-      "commit_sha": "d51a6a249fe066d1c850c24ac73abaa3095749b5",
-      "prompt_preview": "Current Task: Task: Run pytest\n\nRequirements Status:\n- \u274c INCOMPLETE: Run pytest ",
-      "timestamp": "2025-08-04T08:07:31.951379"
-    },
-    {
-      "id": "checkpoint-71",
-      "commit_sha": "a26269f3969d895ce8d9d6195d58e0b083487c81",
-      "prompt_preview": "Analyze the following for task deviations:\n\nTRANSCRIPT:\n\n            User: I nee",
-      "timestamp": "2025-08-04T08:07:35.512881"
-    },
-    {
       "id": "checkpoint-72",
       "commit_sha": "b749d53c5b3dfa6896cf3757a1eb4a2f28a0bfe9",
       "prompt_preview": "Analyze the following for task deviations:\n\nTRANSCRIPT:\n\n            User: I nee",
@@ -600,6 +552,55 @@
       "commit_sha": "ac832d522039a4d175ba160fb3e9c3182d6e88c8",
       "prompt_preview": "what is the currently active model?",
       "timestamp": "2025-08-04T08:25:02.924943"
+    },
+    {
+      "id": "checkpoint-100",
+      "commit_sha": "f2b72110f9d432317d988e591574432bee893277",
+      "prompt_preview": "/tidy:fix ",
+      "timestamp": "2025-08-04T12:03:04.930622"
+    },
+    {
+      "id": "checkpoint-100",
+      "commit_sha": "c3dd22ec7046a2da8e83c2ca33a429a969fdadf6",
+      "prompt_preview": "add ignore comments in the tests",
+      "timestamp": "2025-08-04T12:05:25.026196"
+    },
+    {
+      "id": "checkpoint-100",
+      "commit_sha": "3f3b0a7e573087d539c655641bc593a94910f407",
+      "prompt_preview": "please use getDiagnostics to determine errors and try again",
+      "timestamp": "2025-08-04T12:12:39.355318"
+    },
+    {
+      "id": "checkpoint-100",
+      "commit_sha": "a5cc07e5baae20517cab3daa68235c217923a73e",
+      "prompt_preview": "how do i run the test",
+      "timestamp": "2025-08-04T23:17:42.402293"
+    },
+    {
+      "id": "checkpoint-100",
+      "commit_sha": "e9ab543d593783fb7182ef84236e3ae44cad563d",
+      "prompt_preview": "how do i run it in debug mode to set breakpoints",
+      "timestamp": "2025-08-04T23:19:28.471412"
+    },
+    {
+      "id": "checkpoint-100",
+      "commit_sha": "ebca1767dcb30e83ead3362d956ad83d367f3b41",
+      "prompt_preview": "the test is wrong. its using python directly to update code (\"main_py.write_text",
+      "timestamp": "2025-08-04T23:26:25.289806"
+    },
+    {
+      "id": "checkpoint-100",
+      "commit_sha": "ca4352b6b11cc1415fa6981284b47a118786dc54",
+      "prompt_preview": "still bugs. `orchestra timemachine rollback 1` fails, whereas 'rollback 0' point",
+      "timestamp": "2025-08-04T23:37:55.501270"
+    },
+    {
+      "id": "ckpt-100",
+      "commit_sha": "2c8c60e9122b4c79c1c695800ef055ab3e2bfd9c",
+      "prompt_preview": "you need to run `git add .` before `git stash`. also, rollback still requires 0 ",
+      "timestamp": "2025-08-05T00:00:50.455745",
+      "tag_name": "timemachine/ckpt-100"
     }
   ],
   "settings": {
@@ -607,5 +608,5 @@
     "auto_cleanup": true,
     "include_untracked": false
   },
-  "updated": "2025-08-04T08:25:17.655081"
+  "updated": "2025-08-05T00:00:50.684487"
 }

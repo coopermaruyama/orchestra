@@ -73,3 +73,10 @@ def view(checkpoint_id: str) -> None:
 def rollback(n: int) -> None:
     """Rollback n conversation turns"""
     run_timemachine_command("rollback", str(n))
+
+
+@timemachine.command()
+@click.option("--force", is_flag=True, help="Force deletion without confirmation")
+def prune(force: bool) -> None:
+    """Delete all TimeMachine checkpoints and tags"""
+    run_timemachine_command("prune", "--force" if force else "")

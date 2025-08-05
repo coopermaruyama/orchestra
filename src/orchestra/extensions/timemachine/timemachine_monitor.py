@@ -11,7 +11,7 @@ import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Optional
 
 # Import from common library
 from orchestra.common import (
@@ -68,7 +68,7 @@ class TimeMachineMonitor(GitAwareExtension):
 
         # TimeMachine specific state
         self.enabled: bool = True
-        self.checkpoints: List[Dict[str, Any]] = []
+        self.checkpoint_counter: int = 0  # Next checkpoint number to create
         self.settings: Dict[str, Any] = {}
 
         self.load_config()
@@ -101,7 +101,7 @@ class TimeMachineMonitor(GitAwareExtension):
         config = super().load_config()
 
         self.enabled = config.get("enabled", True)
-        self.checkpoints = config.get("checkpoints", [])
+        self.checkpoint_counter = config.get("checkpoint_counter", 0)
         self.settings = config.get(
             "settings",
             {"max_checkpoints": 100, "auto_cleanup": True, "include_untracked": False},
@@ -110,11 +110,11 @@ class TimeMachineMonitor(GitAwareExtension):
         return config
 
     def save_config(self, config: Optional[Dict[str, Any]] = None) -> None:
-        """Save configuration and checkpoint history"""
+        """Save configuration and checkpoint counter"""
         if config is None:
             config = {
                 "enabled": self.enabled,
-                "checkpoints": self.checkpoints,
+                "checkpoint_counter": self.checkpoint_counter,
                 "settings": self.settings,
                 "updated": datetime.now().isoformat(),
             }
@@ -220,9 +220,6 @@ class TimeMachineMonitor(GitAwareExtension):
                     f"Created checkpoint: {checkpoint_id} for prompt: {truncate_value(current_prompt, 50)}"
                 )
 
-                # Clean up old checkpoints if needed
-                if self.settings.get("auto_cleanup", True):
-                    self._cleanup_old_checkpoints()
         except Exception as e:
             self.logger.error(f"Failed to create checkpoint: {e}")
 
@@ -281,17 +278,25 @@ class TimeMachineMonitor(GitAwareExtension):
             commit_sha = self._get_latest_wip_commit()
 
             if commit_sha:
-                # Add to checkpoint history
-                checkpoint = {
-                    "id": f"checkpoint-{len(self.checkpoints)}",
-                    "commit_sha": commit_sha,
-                    "prompt_preview": current_prompt[:80],
-                    "timestamp": metadata["timestamp"],
-                }
-                self.checkpoints.append(checkpoint)
+                # Create checkpoint ID using counter
+                checkpoint_id = f"ckpt-{self.checkpoint_counter}"
+
+                # Create git tag for better visibility in git log
+                tag_name = f"timemachine/{checkpoint_id}"
+                try:
+                    self.git_manager._run_git_command([
+                        "tag", "-a", tag_name, commit_sha,
+                        "-m", f"TimeMachine checkpoint: {current_prompt[:50]}..."
+                    ])
+                    self.logger.debug(f"Created git tag: {tag_name}")
+                except Exception as e:
+                    self.logger.warning(f"Failed to create git tag {tag_name}: {e}")
+
+                # Increment counter for next checkpoint
+                self.checkpoint_counter += 1
                 self.save_config()
 
-                return checkpoint["id"]
+                return checkpoint_id
 
         except FileNotFoundError as e:
             self.logger.error(f"Cannot create checkpoint: {e}")
@@ -364,89 +369,79 @@ class TimeMachineMonitor(GitAwareExtension):
                 pass
         return {}
 
-    def _cleanup_old_checkpoints(self) -> None:
-        """Remove old checkpoints beyond max_checkpoints limit"""
-        max_checkpoints = self.settings.get("max_checkpoints", 100)
-        if len(self.checkpoints) > max_checkpoints:
-            # Remove oldest checkpoints
-            self.checkpoints = self.checkpoints[-max_checkpoints:]
-            self.save_config()
 
     # CLI Commands
     def list_checkpoints(self) -> None:
         """List all checkpoints"""
-        # Don't reload config, just load checkpoints from git
-        old_checkpoints = self.checkpoints.copy()
-        self._load_checkpoints_from_git()
-
-        # If no checkpoints were loaded from git, use the ones from config
-        if not self.checkpoints and old_checkpoints:
-            self.checkpoints = old_checkpoints
-
-        if not self.checkpoints:
+        if self.checkpoint_counter == 0:
             print("No checkpoints found.")
             return
 
         print("\n🕐 TimeMachine Checkpoints:")
         print("=" * 80)
 
-        for i, checkpoint in enumerate(reversed(self.checkpoints)):
-            turns_ago = i
-
-            # Handle old checkpoints that might not have timestamp
-            if "timestamp" in checkpoint:
-                timestamp = datetime.fromisoformat(checkpoint["timestamp"])
-                relative_time = self._format_relative_time(timestamp)
-            else:
-                relative_time = "unknown time"
-
-            prompt_preview = checkpoint.get("prompt_preview", "No preview available")
-            checkpoint_id = checkpoint.get(
-                "id", f"checkpoint-{len(self.checkpoints) - i - 1}"
-            )
-
-            if turns_ago == 0:
-                print(f"→ [{checkpoint_id}] {relative_time} - {prompt_preview}")
-            else:
-                print(f"  [{checkpoint_id}] {relative_time} - {prompt_preview}")
+        # Get all timemachine tags to show details
+        try:
+            result = self.git_manager._run_git_command([
+                "tag", "-l", "--sort=-creatordate", 
+                "--format=%(refname:short)|%(creatordate:relative)|%(subject)",
+                "timemachine/*"
+            ])
+            
+            if not result.stdout.strip():
+                print("No checkpoint tags found.")
+                return
+                
+            lines = result.stdout.strip().split('\n')
+            for i, line in enumerate(lines):
+                if not line:
+                    continue
+                    
+                parts = line.split('|', 2)
+                if len(parts) >= 3:
+                    tag_name = parts[0]
+                    relative_time = parts[1]
+                    subject = parts[2]
+                    
+                    # Extract checkpoint ID from tag name
+                    checkpoint_id = tag_name.replace('timemachine/', '')
+                    
+                    if i == 0:
+                        print(f"→ [{checkpoint_id}] {relative_time} - {subject}")
+                    else:
+                        print(f"  [{checkpoint_id}] {relative_time} - {subject}")
+                        
+        except Exception as e:
+            # Fallback: just show checkpoint numbers
+            print(f"Available checkpoints: ckpt-0 to ckpt-{self.checkpoint_counter - 1}")
+            print(f"(Error getting details: {e})")
 
         print("=" * 80)
-        print(f"\nTotal checkpoints: {len(self.checkpoints)}")
+        print(f"\nTotal checkpoints: {self.checkpoint_counter}")
         print("\nUse 'orchestra timemachine view <id>' to see full details")
-        print("Use 'orchestra timemachine checkout <id>' to restore a checkpoint")
+        print("Use 'orchestra timemachine rollback <n>' to go back n turns")
 
     def checkout_checkpoint(self, checkpoint_id: str) -> None:
         """Checkout a specific checkpoint"""
-        # First, try to load checkpoints from git
-        self._load_checkpoints_from_git()
-
-        checkpoint = self._find_checkpoint(checkpoint_id)
-        if not checkpoint:
-            print(f"❌ Checkpoint not found: {checkpoint_id}")
-            return
-
-        try:
-            # Checkout the commit
-            self.git_manager._run_git_command(["checkout", checkpoint["commit_sha"]])
-            print(f"✅ Checked out checkpoint: {checkpoint_id}")
-            print(f"   Prompt: {checkpoint['prompt_preview']}")
-        except Exception as e:
-            print(f"❌ Failed to checkout: {e}")
+        tag_name = f"timemachine/{checkpoint_id}"
+        self._checkout_by_tag(tag_name, checkpoint_id)
 
     def view_checkpoint(self, checkpoint_id: str) -> None:
         """View full details of a checkpoint"""
-        # First, try to load checkpoints from git
-        self._load_checkpoints_from_git()
-
-        checkpoint = self._find_checkpoint(checkpoint_id)
-        if not checkpoint:
-            print(f"❌ Checkpoint not found: {checkpoint_id}")
-            return
-
+        tag_name = f"timemachine/{checkpoint_id}"
+        
         try:
+            # Get commit hash from tag
+            result = self.git_manager._run_git_command(["rev-list", "-n", "1", tag_name])
+            commit_sha = result.stdout.strip()
+            
+            if not commit_sha:
+                print(f"❌ Checkpoint not found: {checkpoint_id}")
+                return
+
             # Get commit metadata
             result = self.git_manager._run_git_command(
-                ["show", "--no-patch", "--format=%B", checkpoint["commit_sha"]]
+                ["show", "--no-patch", "--format=%B", commit_sha]
             )
 
             # Parse metadata from commit message
@@ -481,24 +476,49 @@ class TimeMachineMonitor(GitAwareExtension):
 
     def rollback_n_turns(self, n: int) -> None:
         """Rollback n conversation turns"""
-        if n >= len(self.checkpoints):
-            print(
-                f"❌ Cannot rollback {n} turns. Only {len(self.checkpoints)} checkpoints available."
-            )
+        if n <= 0:
+            print(f"❌ Cannot rollback {n} turns. Must be positive number.")
             return
+            
+        if self.checkpoint_counter == 0:
+            print("❌ No checkpoints available to rollback to.")
+            return
+            
+        # Calculate target checkpoint: current counter - n
+        target_checkpoint_num = self.checkpoint_counter - n
+        
+        if target_checkpoint_num < 0:
+            print(f"❌ Cannot rollback {n} turns. Only {self.checkpoint_counter} checkpoints exist.")
+            return
+            
+        checkpoint_id = f"ckpt-{target_checkpoint_num}"
+        tag_name = f"timemachine/{checkpoint_id}"
+        
+        # Direct checkout using git tag
+        self._checkout_by_tag(tag_name, checkpoint_id)
 
-        # Get checkpoint from n turns ago
-        checkpoint_index = -(n + 1)  # -1 for latest, -2 for 1 turn ago, etc.
-        checkpoint = self.checkpoints[checkpoint_index]
+    def _checkout_by_tag(self, tag_name: str, checkpoint_id: str) -> None:
+        """Checkout a specific checkpoint by git tag"""
+        try:
+            # Check if working directory is clean
+            status_result = self.git_manager._run_git_command(["status", "--porcelain"])
+            if status_result.stdout.strip():
+                # Working directory is dirty, stash changes
+                print("⚠️  Working directory has changes, stashing...")
+                # Add untracked files first
+                self.git_manager._run_git_command(["add", "."])
+                self.git_manager._run_git_command(["stash", "push", "-m", f"Auto-stash before rollback {checkpoint_id}"])
+                print("   Changes stashed successfully")
 
-        self.checkout_checkpoint(checkpoint["id"])
-
-    def _find_checkpoint(self, checkpoint_id: str) -> Optional[Dict[str, Any]]:
-        """Find checkpoint by ID"""
-        for checkpoint in self.checkpoints:
-            if checkpoint["id"] == checkpoint_id:
-                return checkpoint
-        return None
+            # Checkout the tag
+            self.git_manager._run_git_command(["checkout", tag_name])
+            print(f"✅ Rolled back to checkpoint: {checkpoint_id}")
+            
+            if status_result.stdout.strip():
+                print("   Use 'git stash pop' to restore your stashed changes")
+                
+        except Exception as e:
+            print(f"❌ Failed to rollback to {checkpoint_id}: {e}")
 
     def _format_relative_time(self, timestamp: datetime) -> str:
         """Format timestamp as relative time"""
@@ -520,121 +540,56 @@ class TimeMachineMonitor(GitAwareExtension):
         days = delta.days
         return f"{days} day{'s' if days > 1 else ''} ago"
 
-    def _load_checkpoints_from_git(self) -> None:
-        """Load checkpoints from git history"""
-        if not self.git_manager._is_git_repo():
+
+    def prune_checkpoints(self, force: bool = False) -> None:
+        """Delete all TimeMachine checkpoints and tags"""
+        if self.checkpoint_counter == 0:
+            print("No checkpoints to prune.")
             return
 
-        try:
-            # Find the wip branch
-            wip_refs = []
-            try:
-                result = self.git_manager._run_git_command(
-                    ["for-each-ref", "--format=%(refname)", "refs/wip/"]
-                )
-                wip_refs = [
-                    ref.strip()
-                    for ref in result.stdout.strip().split("\n")
-                    if ref.strip()
-                ]
-            except Exception as e:
-                self.logger.debug(f"Failed to get wip refs: {e}")
+        print(f"Found {self.checkpoint_counter} checkpoints to delete.")
 
-            if not wip_refs:
-                self.logger.debug("No wip refs found")
+        if not force:
+            response = input("Are you sure you want to delete ALL TimeMachine checkpoints? (y/N): ")
+            if response.lower() not in ['y', 'yes']:
+                print("Prune cancelled.")
                 return
 
-            self.logger.debug(f"Found wip refs: {wip_refs}")
+        deleted_count = 0
 
-            # Clear existing checkpoints to avoid duplicates
-            self.checkpoints = []
+        # Delete git tags with timemachine/ prefix
+        try:
+            # Get all timemachine tags
+            result = self.git_manager._run_git_command([
+                "tag", "-l", "timemachine/*"
+            ])
+            tags = [tag.strip() for tag in result.stdout.strip().split('\n') if tag.strip()]
 
-            # Get all commits from the wip branch
-            for wip_ref in wip_refs:
-                try:
-                    # Get the log of all TimeMachine commits
-                    result = self.git_manager._run_git_command(
-                        [
-                            "log",
-                            wip_ref,
-                            "--grep=TimeMachine:",
-                            "--format=%H|%ct|%s",
-                            "--reverse",  # Oldest first
-                        ]
-                    )
-
-                    self.logger.debug(
-                        f"Git log result for {wip_ref}: {result.stdout[:200]}"
-                    )
-
-                    if not result.stdout.strip():
-                        self.logger.debug(f"No TimeMachine commits found in {wip_ref}")
-                        continue
-
-                    # Parse each commit
-                    checkpoint_count = 0
-                    for line in result.stdout.strip().split("\n"):
-                        if not line:
-                            continue
-
-                        parts = line.split("|", 2)
-                        if len(parts) < 3:
-                            continue
-
-                        commit_sha = parts[0]
-                        commit_time = int(parts[1])
-                        subject = parts[2]
-
-                        # Extract prompt preview from subject
-                        if subject.startswith("TimeMachine: "):
-                            prompt_preview = subject[13:].rstrip(".")
-                            if len(prompt_preview) > 80:
-                                prompt_preview = prompt_preview[:80]
-
-                            # Get full metadata from commit message
-                            try:
-                                result = self.git_manager._run_git_command(
-                                    ["show", "--no-patch", "--format=%B", commit_sha]
-                                )
-
-                                # Parse metadata from commit message
-                                lines = result.stdout.strip().split("\n")
-                                timestamp = datetime.fromtimestamp(
-                                    commit_time
-                                ).isoformat()
-
-                                checkpoint = {
-                                    "id": f"checkpoint-{checkpoint_count}",
-                                    "commit_sha": commit_sha,
-                                    "prompt_preview": prompt_preview,
-                                    "timestamp": timestamp,
-                                }
-
-                                self.checkpoints.append(checkpoint)
-                                checkpoint_count += 1
-
-                            except Exception as e:
-                                self.logger.debug(
-                                    f"Failed to get metadata for {commit_sha}: {e}"
-                                )
-
-                except Exception as e:
-                    self.logger.error(f"Failed to load checkpoints from {wip_ref}: {e}")
-
-            # Save the loaded checkpoints to config
-            if self.checkpoints:
-                self.save_config()
-                self.logger.info(f"Loaded {len(self.checkpoints)} checkpoints from git")
+            if tags:
+                print(f"Deleting {len(tags)} TimeMachine tags...")
+                for tag in tags:
+                    try:
+                        self.git_manager._run_git_command(["tag", "-d", tag])
+                        deleted_count += 1
+                    except Exception as e:
+                        print(f"⚠️  Failed to delete tag {tag}: {e}")
 
         except Exception as e:
-            self.logger.error(f"Failed to load checkpoints from git: {e}")
+            print(f"⚠️  Failed to list timemachine tags: {e}")
+
+        # Reset checkpoint counter
+        self.checkpoint_counter = 0
+        self.save_config()
+
+        print(f"✅ Pruned {deleted_count} TimeMachine tags and reset checkpoint counter.")
+        print("Note: The actual git commits in refs/wip/ are preserved.")
 
 
 def main():
     """CLI entry point for TimeMachine commands"""
     if len(sys.argv) < 2:
         print("Usage: timemachine_monitor.py <command> [args]")
-        print("Commands: list, checkout <id>, view <id>, rollback <n>, hook <event>")
+        print("Commands: list, checkout <id>, view <id>, rollback <n>, prune [--force], hook <event>")
         return
 
     command = sys.argv[1]
@@ -652,6 +607,9 @@ def main():
             monitor.rollback_n_turns(n)
         except ValueError:
             print("❌ Please provide a number for rollback")
+    elif command == "prune":
+        force = "--force" in sys.argv
+        monitor.prune_checkpoints(force)
     elif command == "hook" and len(sys.argv) > 2:
         # Handle hook invocation
         hook_event = sys.argv[2]
