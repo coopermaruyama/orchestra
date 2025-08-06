@@ -110,29 +110,11 @@ Issues found:
 
 ### TimeMachine: Easy Rollback When Things Go Wrong
 
-```
-🔹 Human: Update the database schema to add user preferences
+TimeMachine watches your transcript and automatically creates checkpoints on each prompt. This lets you develop by iterating on your prompt rather than by manually modifying claude's mistakes
 
-🤖 Claude: I'll update the database schema to add user preferences.
+<img width="1938" height="1210" alt="carbon (5)" src="https://github.com/user-attachments/assets/b3b24449-5a29-4b10-8ca1-0cea84616d3b" />
 
-[Claude makes several changes to models and migrations]
 
-🔹 Human: Actually, this is breaking our tests. Can we go back?
-
-🤖 Claude: I'll use TimeMachine to rollback to before the schema changes.
-
-🕐 Orchestra TimeMachine: Available checkpoints:
-1. "Update database schema to add user preferences" (3 minutes ago)
-2. "Fix login 500 error bug" (15 minutes ago)
-3. "Add input validation to user form" (22 minutes ago)
-
-Rolling back to checkpoint 2...
-
-✅ Restored to: "Fix login 500 error bug"
-- Reverted 5 file changes
-- Current branch: main
-- All changes have been undone
-```
 
 ### Tester: Calibrated Test Runner
 
