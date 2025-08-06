@@ -43,7 +43,7 @@ class TimeMachineMonitor(GitAwareExtension):
         working_dir = os.environ.get("CLAUDE_WORKING_DIR")
         if not working_dir:
             working_dir = self._get_project_directory()
-            
+
         log_dir = os.path.join(working_dir, ".claude", "logs")
 
         os.makedirs(log_dir, exist_ok=True)
@@ -66,7 +66,7 @@ class TimeMachineMonitor(GitAwareExtension):
         self.enabled: bool = True
         # Typed checkpoint counters - migrated from single checkpoint_counter
         self.prompt_counter: int = 0  # For regular prompt checkpoints
-        self.plan_counter: int = 0    # For plan-related checkpoints  
+        self.plan_counter: int = 0    # For plan-related checkpoints
         self.todo_counter: int = 0    # For todo change checkpoints
         self.settings: Dict[str, Any] = {}
 
@@ -99,21 +99,21 @@ class TimeMachineMonitor(GitAwareExtension):
         """Load state and settings"""
         # Load state from the state file (dot-prefixed)
         state = super().load_config()
-        
+
         # Load settings from shared settings.json
         self.settings = self.get_extension_settings("timemachine")
         if not self.settings:
             # Default settings if not found in settings.json
             self.settings = {
                 "enabled": True,
-                "max_checkpoints": 100, 
-                "auto_cleanup": True, 
+                "max_checkpoints": 100,
+                "auto_cleanup": True,
                 "include_untracked": False
             }
 
         # Load state data
         self.enabled = state.get("enabled", self.settings.get("enabled", True))
-        
+
         # Load typed counters (no migration - start fresh)
         self.prompt_counter = state.get("prompt_counter", 0)
         self.plan_counter = state.get("plan_counter", 0)
@@ -233,7 +233,7 @@ class TimeMachineMonitor(GitAwareExtension):
         try:
             # Determine checkpoint type based on session state
             checkpoint_type = self._determine_checkpoint_type(context)
-            
+
             # Create the typed checkpoint
             checkpoint_id = self._create_typed_checkpoint(context, checkpoint_type)
             if checkpoint_id:
@@ -251,25 +251,25 @@ class TimeMachineMonitor(GitAwareExtension):
 
     def _determine_checkpoint_type(self, context: Dict[str, Any]) -> str:
         """Determine the type of checkpoint to create based on session state
-        
+
         Args:
             context: Hook context
-            
+
         Returns:
             Checkpoint type: 'plan', 'todo', or 'prompt'
         """
         state = self.get_session_state(context)
-        
+
         # Check if a plan was just completed (plancheck extension sets this)
         if state.get("plan_active"):
             self.logger.debug("Plan completion detected - creating plan checkpoint")
             return "plan"
-        
+
         # Check if todos were changed during this turn
         elif state.get("todos_changed"):
             self.logger.debug("Todo changes detected - creating todo checkpoint")
             return "todo"
-        
+
         # Default to prompt checkpoint
         else:
             self.logger.debug("Regular prompt completion - creating prompt checkpoint")
@@ -277,11 +277,11 @@ class TimeMachineMonitor(GitAwareExtension):
 
     def _create_typed_checkpoint(self, context: Dict[str, Any], checkpoint_type: str) -> Optional[str]:
         """Create a git checkpoint with typed prefix and metadata
-        
+
         Args:
             context: Hook context
             checkpoint_type: Type of checkpoint ('plan', 'todo', 'prompt')
-            
+
         Returns:
             Checkpoint ID if successful, None otherwise
         """
@@ -290,22 +290,22 @@ class TimeMachineMonitor(GitAwareExtension):
             counter = self.plan_counter
             self.plan_counter += 1
         elif checkpoint_type == "todo":
-            counter = self.todo_counter  
+            counter = self.todo_counter
             self.todo_counter += 1
         else:  # prompt
             counter = self.prompt_counter
             self.prompt_counter += 1
-        
+
         # Create checkpoint ID with typed prefix
         checkpoint_id = f"{checkpoint_type}-{counter}"
-        
+
         # Use the existing checkpoint creation logic but with typed ID
         result = self._create_checkpoint_with_id(context, checkpoint_id, checkpoint_type)
-        
+
         if result:
             # Save updated counters
             self.save_config()
-            
+
         return result
 
     def _create_checkpoint_with_id(self, context: Dict[str, Any], checkpoint_id: str, checkpoint_type: str) -> Optional[str]:
@@ -340,22 +340,22 @@ class TimeMachineMonitor(GitAwareExtension):
             "files_modified": files_modified,
             "session_id": session_id,
         }
-        
+
         # Create checkpoint-type-specific commit message with relevant content
         if checkpoint_type == "plan":
             # For plan checkpoints, include the plan title and try to get plan content
             plan_title = state.get("plan_title", "Untitled Plan")
-            
+
             # Try to read the plan content from the most recent plan file
             plan_preview = self._get_recent_plan_content(context)
             if plan_preview:
                 commit_message = f"TimeMachine [plan]: {plan_title}\n\nPlan Content Preview:\n{plan_preview}\n\nMetadata:\n{json.dumps(metadata, indent=2)}"
             else:
                 commit_message = f"TimeMachine [plan]: {plan_title}\n\n{json.dumps(metadata, indent=2)}"
-            
+
             # Add plan-specific metadata
             metadata["plan_title"] = plan_title
-            
+
         elif checkpoint_type == "todo":
             # For todo checkpoints, describe what todos were changed and include todo summary
             todo_summary = self._get_todo_summary_from_prompt(current_prompt)
@@ -363,7 +363,7 @@ class TimeMachineMonitor(GitAwareExtension):
                 commit_message = f"TimeMachine [todo]: {todo_summary}\n\nPrompt: {current_prompt[:100]}...\n\nMetadata:\n{json.dumps(metadata, indent=2)}"
             else:
                 commit_message = f"TimeMachine [todo]: Todo list updated\n\nPrompt: {current_prompt[:100]}...\n\nMetadata:\n{json.dumps(metadata, indent=2)}"
-            
+
         else:  # prompt
             # For prompt checkpoints, include the full user prompt (with reasonable limit)
             prompt_preview = current_prompt[:200] + ("..." if len(current_prompt) > 200 else "")
@@ -387,7 +387,7 @@ class TimeMachineMonitor(GitAwareExtension):
                 try:
                     self.git_manager._run_git_command([
                         "tag", "-a", tag_name, commit_sha,
-                        "-m", f"TimeMachine {checkpoint_type} checkpoint: {current_prompt[:50]}..."
+                        "-m", f"{checkpoint_type} checkpoint: {current_prompt[:50]}..."
                     ])
                     self.logger.debug(f"Created git tag: {tag_name}")
                 except Exception as e:
@@ -495,10 +495,10 @@ class TimeMachineMonitor(GitAwareExtension):
 
     def _get_recent_plan_content(self, context: Dict[str, Any]) -> Optional[str]:
         """Get content preview from the most recently created plan file
-        
+
         Args:
             context: Hook context
-            
+
         Returns:
             Plan content preview (first 300 chars) or None if not found
         """
@@ -506,47 +506,47 @@ class TimeMachineMonitor(GitAwareExtension):
             plans_dir = Path(self.orchestra_dir) / "plans"
             if not plans_dir.exists():
                 return None
-                
+
             # Find the most recent plan file
             plan_files = sorted(plans_dir.glob("*.md"), key=lambda p: p.stat().st_mtime, reverse=True)
             if not plan_files:
                 return None
-                
+
             # Read the most recent plan file
             latest_plan = plan_files[0]
             with open(latest_plan, 'r', encoding='utf-8') as f:
                 content = f.read()
-                
+
             # Return first 300 characters as preview, skip the header
             lines = content.split('\n')
             content_lines = []
             skip_header = True
-            
+
             for line in lines:
                 if skip_header and line.startswith('*Created:'):
                     skip_header = False
                     continue
                 elif not skip_header and line.strip():
                     content_lines.append(line)
-                    
+
             preview_content = '\n'.join(content_lines)
             return preview_content[:300] + ("..." if len(preview_content) > 300 else "")
-            
+
         except Exception as e:
             self.logger.debug(f"Could not read plan content: {e}")
             return None
 
     def _get_todo_summary_from_prompt(self, prompt: str) -> Optional[str]:
         """Extract a summary of todo-related activity from the user prompt
-        
+
         Args:
             prompt: User prompt text
-            
+
         Returns:
             Summary of todo activity or None if not clear
         """
         prompt_lower = prompt.lower()
-        
+
         # Look for common todo-related patterns
         if "todo" in prompt_lower or "task" in prompt_lower:
             # Try to extract a meaningful summary
@@ -558,13 +558,13 @@ class TimeMachineMonitor(GitAwareExtension):
                 return "Updated todo list"
             else:
                 return "Modified todo list"
-        
+
         # Look for action words that might indicate todo changes
         action_words = ["implement", "fix", "add", "create", "build", "test", "refactor"]
         for word in action_words:
             if word in prompt_lower:
                 return f"Todo activity: {word}"
-                
+
         return None
 
     def _get_latest_wip_commit(self) -> Optional[str]:
@@ -629,7 +629,7 @@ class TimeMachineMonitor(GitAwareExtension):
     def list_checkpoints(self) -> None:
         """List all checkpoints"""
         total_checkpoints = self.prompt_counter + self.plan_counter + self.todo_counter
-        
+
         if total_checkpoints == 0:
             print("No checkpoints found.")
             return
@@ -640,34 +640,34 @@ class TimeMachineMonitor(GitAwareExtension):
         # Get all timemachine tags to show details
         try:
             result = self.git_manager._run_git_command([
-                "tag", "-l", "--sort=-creatordate", 
+                "tag", "-l", "--sort=-creatordate",
                 "--format=%(refname:short)|%(creatordate:relative)|%(subject)",
                 "timemachine/*"
             ])
-            
+
             if not result.stdout.strip():
                 print("No checkpoint tags found.")
                 return
-                
+
             lines = result.stdout.strip().split('\n')
             for i, line in enumerate(lines):
                 if not line:
                     continue
-                    
+
                 parts = line.split('|', 2)
                 if len(parts) >= 3:
                     tag_name = parts[0]
                     relative_time = parts[1]
                     subject = parts[2]
-                    
+
                     # Extract checkpoint ID from tag name
                     checkpoint_id = tag_name.replace('timemachine/', '')
-                    
+
                     if i == 0:
                         print(f"→ [{checkpoint_id}] {relative_time} - {subject}")
                     else:
                         print(f"  [{checkpoint_id}] {relative_time} - {subject}")
-                        
+
         except Exception as e:
             # Fallback: show typed checkpoint counts if any exist
             if self.prompt_counter > 0:
@@ -694,12 +694,12 @@ class TimeMachineMonitor(GitAwareExtension):
     def view_checkpoint(self, checkpoint_id: str) -> None:
         """View full details of a checkpoint"""
         tag_name = f"timemachine/{checkpoint_id}"
-        
+
         try:
             # Get commit hash from tag
             result = self.git_manager._run_git_command(["rev-list", "-n", "1", tag_name])
             commit_sha = result.stdout.strip()
-            
+
             if not commit_sha:
                 print(f"❌ Checkpoint not found: {checkpoint_id}")
                 return
@@ -744,21 +744,21 @@ class TimeMachineMonitor(GitAwareExtension):
         if n <= 0:
             print(f"❌ Cannot rollback {n} turns. Must be positive number.")
             return
-            
+
         if self.checkpoint_counter == 0:
             print("❌ No checkpoints available to rollback to.")
             return
-            
+
         # Calculate target checkpoint: current counter - n
         target_checkpoint_num = self.checkpoint_counter - n
-        
+
         if target_checkpoint_num < 0:
             print(f"❌ Cannot rollback {n} turns. Only {self.checkpoint_counter} checkpoints exist.")
             return
-            
+
         checkpoint_id = f"ckpt-{target_checkpoint_num}"
         tag_name = f"timemachine/{checkpoint_id}"
-        
+
         # Direct checkout using git tag
         self._checkout_by_tag(tag_name, checkpoint_id)
 
@@ -778,10 +778,10 @@ class TimeMachineMonitor(GitAwareExtension):
             # Checkout the tag
             self.git_manager._run_git_command(["checkout", tag_name])
             print(f"✅ Rolled back to checkpoint: {checkpoint_id}")
-            
+
             if status_result.stdout.strip():
                 print("   Use 'git stash pop' to restore your stashed changes")
-                
+
         except Exception as e:
             print(f"❌ Failed to rollback to {checkpoint_id}: {e}")
 

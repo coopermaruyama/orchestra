@@ -21,29 +21,32 @@ def timemachine() -> None:
 
 def run_timemachine_command(subcommand: str, *args: str) -> None:
     """Helper to run timemachine commands"""
-    # Find the timemachine_monitor.py script
-    local_script = (
-        Path(".claude") / "orchestra" / "timemachine" / "timemachine_monitor.py"
-    )
-    global_script = (
-        Path.home() / ".claude" / "orchestra" / "timemachine" / "timemachine_monitor.py"
-    )
-
-    script_path = None
-    if local_script.exists():
-        script_path = local_script
-    elif global_script.exists():
-        script_path = global_script
-    else:
-        console.print(
-            "[bold red]❌ TimeMachine not enabled.[/bold red] Run: [cyan]orchestra enable timemachine[/cyan]"
-        )
-        return
-
-    # Execute the timemachine monitor script with the subcommand
+    # Use the installed module directly
     try:
-        cmd = [sys.executable, str(script_path), subcommand] + list(args)
-        subprocess.run(cmd, check=False)
+        import os
+        from orchestra.extensions.timemachine.timemachine_monitor import main as timemachine_main
+        
+        # Set environment variable to prevent recursive calls
+        original_env = os.environ.get("ORCHESTRA_INTERNAL_CALL")
+        os.environ["ORCHESTRA_INTERNAL_CALL"] = "1"
+        
+        # Set up sys.argv to simulate command line arguments
+        original_argv = sys.argv
+        sys.argv = ["timemachine_monitor.py", subcommand] + list(args)
+        
+        try:
+            timemachine_main()
+        finally:
+            sys.argv = original_argv
+            if original_env is None:
+                os.environ.pop("ORCHESTRA_INTERNAL_CALL", None)
+            else:
+                os.environ["ORCHESTRA_INTERNAL_CALL"] = original_env
+            
+    except ImportError:
+        console.print(
+            "[bold red]❌ TimeMachine not available.[/bold red] Ensure orchestra is properly installed."
+        )
     except Exception as e:
         console.print(f"[bold red]❌ Error running timemachine command:[/bold red] {e}")
 

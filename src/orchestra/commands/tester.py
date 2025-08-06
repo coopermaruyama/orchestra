@@ -21,27 +21,32 @@ def tester() -> None:
 
 def run_tester_command(subcommand: str, *args: str) -> None:
     """Helper to run tester commands"""
-    # Find the tester_monitor.py script
-    local_script = Path(".claude") / "orchestra" / "tester" / "tester_monitor.py"
-    global_script = (
-        Path.home() / ".claude" / "orchestra" / "tester" / "tester_monitor.py"
-    )
-
-    script_path = None
-    if local_script.exists():
-        script_path = local_script
-    elif global_script.exists():
-        script_path = global_script
-    else:
-        console.print(
-            "[bold red]❌ Tester not enabled.[/bold red] Run: [cyan]orchestra enable tester[/cyan]"
-        )
-        return
-
-    # Execute the tester monitor script with the subcommand
+    # Use the installed module directly
     try:
-        cmd = [sys.executable, str(script_path), subcommand] + list(args)
-        subprocess.run(cmd, check=False)
+        import os
+        from orchestra.extensions.tester.tester_monitor import main as tester_main
+        
+        # Set environment variable to prevent recursive calls
+        original_env = os.environ.get("ORCHESTRA_INTERNAL_CALL")
+        os.environ["ORCHESTRA_INTERNAL_CALL"] = "1"
+        
+        # Set up sys.argv to simulate command line arguments
+        original_argv = sys.argv
+        sys.argv = ["tester_monitor.py", subcommand] + list(args)
+        
+        try:
+            tester_main()
+        finally:
+            sys.argv = original_argv
+            if original_env is None:
+                os.environ.pop("ORCHESTRA_INTERNAL_CALL", None)
+            else:
+                os.environ["ORCHESTRA_INTERNAL_CALL"] = original_env
+            
+    except ImportError:
+        console.print(
+            "[bold red]❌ Tester not available.[/bold red] Ensure orchestra is properly installed."
+        )
     except Exception as e:
         console.print(f"[bold red]❌ Error running tester command:[/bold red] {e}")
 

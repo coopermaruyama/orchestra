@@ -2,7 +2,10 @@
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
   "permissions": {
     "allow": [
-      "mcp__ide__getDiagnostics"
+      "mcp__ide__getDiagnostics",
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(orchestra plancheck:*)"
     ],
     "deny": []
   },

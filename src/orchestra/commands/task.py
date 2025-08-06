@@ -21,25 +21,32 @@ def task() -> None:
 
 def run_task_command(subcommand: str, *args: str) -> None:
     """Helper to run task monitor commands"""
-    # Find the task_monitor.py script
-    local_script = Path(".claude") / "orchestra" / "task" / "task_monitor.py"
-    global_script = Path.home() / ".claude" / "orchestra" / "task" / "task_monitor.py"
-
-    script_path = None
-    if local_script.exists():
-        script_path = local_script
-    elif global_script.exists():
-        script_path = global_script
-    else:
-        console.print(
-            "[bold red]❌ Task monitor not enabled.[/bold red] Run: [cyan]orchestra enable task[/cyan]"
-        )
-        return
-
-    # Execute the task monitor script with the subcommand
+    # Use the installed module directly
     try:
-        cmd = [sys.executable, str(script_path), subcommand] + list(args)
-        subprocess.run(cmd, check=False)
+        import os
+        from orchestra.extensions.task.task_monitor import main as task_main
+        
+        # Set environment variable to prevent recursive calls
+        original_env = os.environ.get("ORCHESTRA_INTERNAL_CALL")
+        os.environ["ORCHESTRA_INTERNAL_CALL"] = "1"
+        
+        # Set up sys.argv to simulate command line arguments
+        original_argv = sys.argv
+        sys.argv = ["task_monitor.py", subcommand] + list(args)
+        
+        try:
+            task_main()
+        finally:
+            sys.argv = original_argv
+            if original_env is None:
+                os.environ.pop("ORCHESTRA_INTERNAL_CALL", None)
+            else:
+                os.environ["ORCHESTRA_INTERNAL_CALL"] = original_env
+            
+    except ImportError:
+        console.print(
+            "[bold red]❌ Task monitor not available.[/bold red] Ensure orchestra is properly installed."
+        )
     except Exception as e:
         console.print(f"[bold red]❌ Error running task command:[/bold red] {e}")
 

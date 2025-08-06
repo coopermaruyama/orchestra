@@ -21,25 +21,32 @@ def tidy() -> None:
 
 def run_tidy_command(subcommand: str, *args: str) -> None:
     """Helper to run tidy commands"""
-    # Find the tidy_monitor.py script
-    local_script = Path(".claude") / "orchestra" / "tidy" / "tidy_monitor.py"
-    global_script = Path.home() / ".claude" / "orchestra" / "tidy" / "tidy_monitor.py"
-
-    script_path = None
-    if local_script.exists():
-        script_path = local_script
-    elif global_script.exists():
-        script_path = global_script
-    else:
-        console.print(
-            "[bold red]❌ Tidy not enabled.[/bold red] Run: [cyan]orchestra enable tidy[/cyan]"
-        )
-        return
-
-    # Execute the tidy monitor script with the subcommand
+    # Use the installed module directly
     try:
-        cmd = [sys.executable, str(script_path), subcommand] + list(args)
-        subprocess.run(cmd, check=False)
+        import os
+        from orchestra.extensions.tidy.tidy_monitor import main as tidy_main
+        
+        # Set environment variable to prevent recursive calls
+        original_env = os.environ.get("ORCHESTRA_INTERNAL_CALL")
+        os.environ["ORCHESTRA_INTERNAL_CALL"] = "1"
+        
+        # Set up sys.argv to simulate command line arguments
+        original_argv = sys.argv
+        sys.argv = ["tidy_monitor.py", subcommand] + list(args)
+        
+        try:
+            tidy_main()
+        finally:
+            sys.argv = original_argv
+            if original_env is None:
+                os.environ.pop("ORCHESTRA_INTERNAL_CALL", None)
+            else:
+                os.environ["ORCHESTRA_INTERNAL_CALL"] = original_env
+            
+    except ImportError:
+        console.print(
+            "[bold red]❌ Tidy not available.[/bold red] Ensure orchestra is properly installed."
+        )
     except Exception as e:
         console.print(f"[bold red]❌ Error running tidy command:[/bold red] {e}")
 

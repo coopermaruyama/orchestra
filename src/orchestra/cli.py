@@ -11,6 +11,7 @@ from orchestra.commands.enable import enable
 from orchestra.commands.hook import hook
 from orchestra.commands.list_cmd import list_extensions
 from orchestra.commands.logs import logs
+from orchestra.commands.plancheck import plancheck
 from orchestra.commands.status import status
 from orchestra.commands.task import task
 from orchestra.commands.tester import tester
@@ -40,6 +41,7 @@ cli.add_command(list_extensions, name="list")
 cli.add_command(status)
 cli.add_command(logs)
 cli.add_command(hook)
+cli.add_command(plancheck)
 cli.add_command(task)
 cli.add_command(timemachine)
 cli.add_command(tidy)

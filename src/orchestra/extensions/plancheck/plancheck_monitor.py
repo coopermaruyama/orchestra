@@ -268,12 +268,135 @@ class PlancheckMonitor(BaseExtension):
 
         return sanitized
 
+    def _invoke_claude_review(self, plan_path: str) -> None:
+        """Invoke Claude with plancheck review prompt for the specified plan
+        
+        Args:
+            plan_path: Path to the plan file to review
+        """
+        import os
+        
+        # Check if we're already in a Claude invocation to prevent recursion
+        if os.environ.get("ORCHESTRA_CLAUDE_INVOCATION") or os.environ.get("ORCHESTRA_INTERNAL_CALL"):
+            print(f"📋 Plan review requested for: {plan_path}")
+            print("⚠️  Cannot invoke Claude from within Orchestra command to prevent recursion")
+            print("💡 To review this plan, run the command directly from Claude Code instead")
+            return
+        
+        try:
+            from orchestra.common.claude_invoker import get_invoker
+            
+            # Read the plan file
+            with open(plan_path, 'r', encoding='utf-8') as f:
+                plan_content = f.read()
+            
+            prompt = f"Please review this plan and provide feedback:\n\n{plan_content}"
+            
+            invoker = get_invoker()
+            result = invoker.invoke_claude(
+                prompt=prompt,
+                system_prompt="You are a plan review assistant. Analyze the given plan for completeness, feasibility, and potential issues. Provide constructive feedback and suggestions for improvement."
+            )
+            
+            if result.get("success"):
+                print("📋 Plan Review Results:")
+                print("=" * 50)
+                print(result["response"])
+            else:
+                print(f"❌ Error during plan review: {result.get('error', 'Unknown error')}")
+                
+        except ImportError:
+            print("❌ Claude invoker not available. Ensure Orchestra is properly installed.")
+        except FileNotFoundError:
+            print(f"❌ Plan file not found: {plan_path}")
+        except Exception as e:
+            print(f"❌ Error during plan review: {e}")
+
+    def _invoke_claude_improve(self, plan_path: str) -> None:
+        """Run review then use results to invoke Claude with improve prompt
+        
+        Args:
+            plan_path: Path to the plan file to improve
+        """
+        import os
+        
+        # Check if we're already in a Claude invocation to prevent recursion
+        if os.environ.get("ORCHESTRA_CLAUDE_INVOCATION") or os.environ.get("ORCHESTRA_INTERNAL_CALL"):
+            print(f"📋 Plan improvement requested for: {plan_path}")
+            print("⚠️  Cannot invoke Claude from within Orchestra command to prevent recursion")
+            print("💡 To improve this plan, run the command directly from Claude Code instead")
+            return
+        
+        try:
+            from orchestra.common.claude_invoker import get_invoker
+            
+            # Read the plan file
+            with open(plan_path, 'r', encoding='utf-8') as f:
+                plan_content = f.read()
+            
+            # First get review feedback
+            review_prompt = f"Please review this plan and identify areas for improvement:\n\n{plan_content}"
+            
+            invoker = get_invoker()
+            review_result = invoker.invoke_claude(
+                prompt=review_prompt,
+                system_prompt="You are a plan review assistant. Analyze the given plan and identify specific areas that need improvement, missing details, or potential issues."
+            )
+            
+            if not review_result.get("success"):
+                print(f"❌ Error during plan review: {review_result.get('error', 'Unknown error')}")
+                return
+            
+            review_feedback = review_result["response"]
+            
+            # Now improve the plan based on feedback
+            improve_prompt = f"""Please revise this plan based on the review feedback provided:
+
+ORIGINAL PLAN:
+{plan_content}
+
+REVIEW FEEDBACK:
+{review_feedback}
+
+Please provide an improved version of the plan that addresses the feedback."""
+            
+            improve_result = invoker.invoke_claude(
+                prompt=improve_prompt,
+                system_prompt="You are a plan improvement assistant. Revise plans based on feedback to make them more complete, feasible, and well-structured."
+            )
+            
+            if improve_result.get("success"):
+                print("📋 Improved Plan:")
+                print("=" * 50)
+                print(improve_result["response"])
+                
+                # Optionally save the improved plan back to the file
+                backup_path = f"{plan_path}.backup"
+                os.rename(plan_path, backup_path)
+                
+                with open(plan_path, 'w', encoding='utf-8') as f:
+                    f.write(improve_result["response"])
+                
+                print(f"\n💾 Improved plan saved to: {plan_path}")
+                print(f"📦 Original plan backed up to: {backup_path}")
+            else:
+                print(f"❌ Error during plan improvement: {improve_result.get('error', 'Unknown error')}")
+                
+        except ImportError:
+            print("❌ Claude invoker not available. Ensure Orchestra is properly installed.")
+        except FileNotFoundError:
+            print(f"❌ Plan file not found: {plan_path}")
+        except Exception as e:
+            print(f"❌ Error during plan improvement: {e}")
+
 
 def main():
     """CLI entry point for Plancheck commands"""
     if len(sys.argv) < 2:
         print("Usage: plancheck_monitor.py <command> [args]")
-        print("Commands: hook <event>, status")
+        print("Commands: hook <event>, status, review <path>, improve <path>")
+        print("  review <path>  - Review the plan at the specified path")
+        print("  improve <path> - Review and then improve the plan at the specified path")
         return
 
     command = sys.argv[1]
@@ -283,6 +406,34 @@ def main():
         print(f"🔍 Plancheck Monitor Status")
         print(f"Enabled: {monitor.enabled}")
         print(f"Plans saved: {monitor.plans_saved}")
+
+    elif command == "review":
+        if len(sys.argv) < 3:
+            print("Error: review command requires a plan file path")
+            print("Usage: plancheck_monitor.py review <path>")
+            sys.exit(1)
+        
+        plan_path = sys.argv[2]
+        if not os.path.exists(plan_path):
+            print(f"Error: Plan file not found: {plan_path}")
+            sys.exit(1)
+        
+        # Invoke Claude with plancheck review prompt
+        monitor._invoke_claude_review(plan_path)
+
+    elif command == "improve":
+        if len(sys.argv) < 3:
+            print("Error: improve command requires a plan file path")
+            print("Usage: plancheck_monitor.py improve <path>")
+            sys.exit(1)
+        
+        plan_path = sys.argv[2]
+        if not os.path.exists(plan_path):
+            print(f"Error: Plan file not found: {plan_path}")
+            sys.exit(1)
+        
+        # Run review and then use results to improve
+        monitor._invoke_claude_improve(plan_path)
 
     elif command == "hook" and len(sys.argv) > 2:
         # Handle hook invocation
