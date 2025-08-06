@@ -160,9 +160,10 @@ class Orchestra:
             commands_dir = self.local_dir
             scripts_dir = Path(".claude") / "orchestra" / extension
 
-        # Create directories
+        # Create commands directory (for command files)
         commands_dir.mkdir(parents=True, exist_ok=True)
-        scripts_dir.mkdir(parents=True, exist_ok=True)
+        # Create bootstrap directory but not individual extension dirs
+        scripts_dir.parent.mkdir(parents=True, exist_ok=True)
 
         # Create shell bootstrap script using template
         bootstrap_dest = scripts_dir.parent / "bootstrap.sh"
@@ -188,11 +189,10 @@ class Orchestra:
             f.write(bootstrap_content)
         bootstrap_dest.chmod(0o755)
 
-        # Copy the extension script and its dependencies
-        self._copy_extension_files(extension, scripts_dir)
+        # No longer copying extension files - use global installation
 
         # Copy orchestra.common library for dependencies
-        self._copy_common_library(scripts_dir)
+        # No longer bundling orchestra.common - use global installation
 
         # Install subagents for intelligent deviation detection
         self._install_subagents(extension, scope)
@@ -217,33 +217,8 @@ class Orchestra:
             )
             return
 
-        # Copy main monitor script
-        monitor_source = (
-            Path(__file__).parent / "extensions" / extension / monitor_script
-        )
-        monitor_dest = scripts_dir / monitor_script
-
-        if monitor_source.exists():
-            shutil.copy(monitor_source, monitor_dest)
-            monitor_dest.chmod(0o755)
-        else:
-            self.console.print(
-                f"[bold red]⚠️ Warning:[/bold red] {monitor_script} not found at {monitor_source}"
-            )
-            return
-
-        # Copy extra modules if specified
-        extra_modules = ext_info.get("extra_modules", [])
-        for module in extra_modules:
-            module_source = Path(__file__).parent / "extensions" / extension / module
-            module_dest = scripts_dir / module
-            if module_source.exists():
-                shutil.copy(module_source, module_dest)
-                module_dest.chmod(0o644)
-            else:
-                self.console.print(
-                    f"[bold red]⚠️ Warning:[/bold red] {module} not found for {extension} extension"
-                )
+        # Note: We no longer copy Python files - they remain in the global Orchestra installation
+        # The bootstrap script will delegate to `orchestra hook` and `orchestra <extension> <command>`
 
     def _copy_common_library(self, scripts_dir: Path) -> None:
         """Copy the orchestra.common library"""

@@ -97,13 +97,21 @@ class NeverAgainMonitor(BaseExtension):
 
             # Parse transcript for new messages since last processing
             new_messages = self._parse_new_messages(transcript_path)
-            
+
             if not new_messages:
                 self.logger.debug("No new messages to process")
                 return HookHandler.create_allow_response()
 
-            # Analyze messages for user corrections (async, non-blocking)
-            self._analyze_corrections_async(new_messages)
+            # Analyze messages for user corrections and check if memory was updated
+            memory_updated = self._analyze_corrections_async(new_messages)
+
+            # If memory was updated, stop execution and notify user
+            if memory_updated:
+                return {
+                    "decision": "block",
+                    "continue": False,
+                    "stopReason": "🧠 Memory Updated: New guidelines learned from your corrections. Please review the updated memory at .claude/memory/neveragain.md before continuing."
+                }
 
         except Exception as e:
             self.logger.error(f"Error in Stop hook: {e}")
@@ -123,14 +131,14 @@ class NeverAgainMonitor(BaseExtension):
             new_messages = []
             current_position = 0
             current_message = None
-            
+
             for line in lines:
                 current_position += len(line)
-                
+
                 # Skip lines before last processed position
                 if current_position <= self.last_processed_position:
                     continue
-                
+
                 line = line.strip()
                 if not line:
                     continue
@@ -141,7 +149,7 @@ class NeverAgainMonitor(BaseExtension):
                     if data.get("type") == "message":
                         role = data.get("role")
                         content = data.get("content", "")
-                        
+
                         if role and content:
                             new_messages.append({
                                 "role": role,
@@ -171,10 +179,10 @@ class NeverAgainMonitor(BaseExtension):
             self.logger.error(f"Error parsing transcript: {e}")
             return []
 
-    def _analyze_corrections_async(self, messages: List[Dict[str, Any]]) -> None:
+    def _analyze_corrections_async(self, messages: List[Dict[str, Any]]) -> bool:
         """Analyze messages for corrections and update memory (async)"""
         if not messages:
-            return
+            return False
 
         try:
             # Build conversation context
@@ -200,12 +208,14 @@ TASK:
 
 2. For each correction found, format it EXACTLY as shown below. Do not include any analysis, explanation, or additional text - just the formatted guidelines:
 
-- <Clear description of the guideline to follow>
+**<Clear description of the guideline to follow>**
 
-Good:
+*Good:*
+
 <Good example if applicable, or omit this section if no good example>
 
-Bad:
+*Bad:*
+
 <Bad example showing what NOT to do, or omit this section if no bad example>
 
 3. If you find any corrections, respond with ONLY the formatted guidelines exactly as shown above. No additional text, analysis, or explanation.
@@ -216,15 +226,15 @@ Remember: Output ONLY the guidelines in the exact format shown, nothing else."""
 
             # Invoke Claude to analyze the corrections
             self.logger.info("Invoking Claude to analyze user corrections")
-            
+
             # Set ORCH_PROJECT_DIR to preserve our project context in environment
             # This will be inherited by any subprocess calls
             original_orch_dir = os.environ.get("ORCH_PROJECT_DIR")
             os.environ["ORCH_PROJECT_DIR"] = self.working_dir
-            
+
             try:
                 response_data = invoke_claude(prompt=prompt)
-                
+
                 # Extract response text from the response data
                 response_text = ""
                 if isinstance(response_data, dict):
@@ -235,9 +245,11 @@ Remember: Output ONLY the guidelines in the exact format shown, nothing else."""
                 if response_text and response_text.strip() != "NO_CORRECTIONS_FOUND":
                     self._update_memory_file(response_text.strip())
                     self.logger.info("Updated memory with new corrections")
+                    return True
                 else:
                     self.logger.debug("No corrections found in recent messages")
-                    
+                    return False
+
             finally:
                 # Restore original ORCH_PROJECT_DIR
                 if original_orch_dir is not None:
@@ -249,6 +261,7 @@ Remember: Output ONLY the guidelines in the exact format shown, nothing else."""
             self.logger.error(f"Error analyzing corrections: {e}")
             import traceback
             self.logger.error(f"Traceback:\n{traceback.format_exc()}")
+            return False
 
     def _update_memory_file(self, corrections: str) -> None:
         """Update the neveragain.md memory file with new corrections"""
@@ -308,7 +321,7 @@ def main() -> None:
         print(f"📝 Never Again Monitor Status")
         print(f"📍 Memory file: {monitor.memory_file}")
         print(f"📊 Last processed position: {monitor.last_processed_position}")
-        
+
         if monitor.memory_file.exists():
             size = monitor.memory_file.stat().st_size
             print(f"📄 Memory file size: {size} bytes")

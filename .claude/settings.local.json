@@ -13,7 +13,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".claude/dev.py"
+            "command": "python3 .claude/dev.py"
           }
         ]
       }

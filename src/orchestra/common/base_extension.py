@@ -770,9 +770,9 @@ class HookHandler:
         """Create a hook response that allows the operation
 
         Returns:
-            Allow response dictionary
+            Allow response dictionary (empty dict means allow by default)
         """
-        return {"decision": "approve"}
+        return {}
 
     @staticmethod
     def is_stop_hook_active(context: HookInput) -> bool:

@@ -140,8 +140,8 @@ def hook(hook_type: str, args: tuple) -> None:
     monitors = find_enabled_monitors()
 
     if not monitors:
-        # No monitors enabled, just allow the operation
-        print(json.dumps({"decision": "approve"}))
+        # No monitors enabled, just allow the operation (empty response means allow)
+        print(json.dumps({}))
         return
 
     # Collect responses from all monitors
@@ -179,13 +179,13 @@ def hook(hook_type: str, args: tuple) -> None:
                 pass
 
     # If we get here, all monitors approved or had non-blocking errors
-    final_response = {"decision": "approve"}
+    final_response = {}
 
     # Include any errors as warnings
     if errors:
         final_response["warnings"] = errors
 
-    # Output the final response
+    # Output the final response (empty response means allow)
     print(json.dumps(final_response))
 
 

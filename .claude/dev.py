@@ -85,8 +85,12 @@ def print_stdin_and_tty():
     # exit(2)
 
 def write_stdin_to_file():
+    txt = sys.stdin.read()
+    if not txt:
+        return
+    # Write the input to a file
     with open("inputs.log", "a") as f:
-        f.write(sys.stdin.read())
+        f.write(txt + "\n")
 
 if __name__ == "__main__":
     # print_stdin_and_tty()
