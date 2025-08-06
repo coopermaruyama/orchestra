@@ -37,7 +37,7 @@ def enable(extension, global_scope):
 
         console.print("\n[bold green]✨ All extensions enabled![/bold green]")
         console.print("\n[bold yellow]Quick start commands:[/bold yellow]")
-        console.print("  [cyan]/task start[/cyan]         - Start a new focused task")
+        console.print("  [cyan]/task progress[/cyan]      - View current task progress")
         console.print(
             "  [cyan]/timemachine list[/cyan]   - View conversation checkpoints"
         )

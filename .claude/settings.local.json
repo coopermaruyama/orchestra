@@ -7,11 +7,14 @@
     "deny": []
   },
   "hooks": {
-    "Stop": [
+    "PostToolUse": [
       {
         "matcher": "*",
         "hooks": [
-
+          {
+            "type": "command",
+            "command": ".claude/dev.py"
+          }
         ]
       }
     ]

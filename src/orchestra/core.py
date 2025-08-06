@@ -36,10 +36,7 @@ class Orchestra:
                 "name": "Task Monitor",
                 "description": "Keep Claude focused on your task requirements. Prevents scope creep, tracks progress, and guides you through requirements step by step.",
                 "commands": [
-                    "task start",
                     "task progress",
-                    "task next",
-                    "task complete",
                     "focus",
                 ],
                 "features": [
@@ -111,6 +108,18 @@ class Orchestra:
                 ],
                 "monitor_script": "plancheck_monitor.py",
             },
+            "neveragain": {
+                "name": "Never Again",
+                "description": "Learns from user corrections to prevent repeated mistakes. Analyzes transcripts for user corrections and stores them as instructions.",
+                "commands": ["neveragain status", "neveragain view"],
+                "features": [
+                    "Analyzes conversation transcripts for corrections",
+                    "Learns from user feedback automatically",
+                    "Stores lessons in .claude/memory/neveragain.md",
+                    "Prevents repeated mistakes over time",
+                ],
+                "monitor_script": "neveragain_monitor.py",
+            },
         }
 
     def render_template(self, template_name: str, context: Dict[str, Any]) -> str:
@@ -133,7 +142,7 @@ class Orchestra:
         if scope == "global":
             commands_dir = self.global_dir
             scripts_dir = self.home / ".claude" / "orchestra" / extension
-            
+
             # Warning for global scope enablement
             self.console.print(
                 "\n[bold yellow]⚠️  Warning: Global scope enablement[/bold yellow]"
@@ -201,7 +210,7 @@ class Orchestra:
         """Copy extension files to the scripts directory"""
         ext_info = self.extensions[extension]
         monitor_script = ext_info.get("monitor_script")
-        
+
         if not monitor_script or not isinstance(monitor_script, str):
             self.console.print(
                 f"[bold red]⚠️ Warning:[/bold red] No monitor script configured for {extension}"
@@ -285,21 +294,9 @@ class Orchestra:
         task_dir.mkdir(parents=True, exist_ok=True)
 
         commands = {
-            "start": {
-                "description": "Start a new task with intelligent guided setup",
-                "script": f"!sh {bootstrap_path} task start",
-            },
             "progress": {
                 "description": "Check current task progress and see what's been completed",
                 "script": f"!sh {bootstrap_path} task status",
-            },
-            "next": {
-                "description": "Show the next priority action to work on",
-                "script": f"!sh {bootstrap_path} task next",
-            },
-            "complete": {
-                "description": "Mark the current requirement as complete and see what's next",
-                "script": f"!sh {bootstrap_path} task complete",
             },
         }
 
@@ -522,7 +519,7 @@ class Orchestra:
                 f"   [dim]-[/dim] {commands_dir / 'task'}/*.md (sub-commands)"
             )
             self.console.print(f"   [dim]-[/dim] {commands_dir / 'focus.md'}")
-            start_cmd = "/task start"
+            start_cmd = "/task progress"
         elif extension == "timemachine":
             self.console.print(
                 f"   [dim]-[/dim] {commands_dir / 'timemachine'}/*.md (sub-commands)"
@@ -599,14 +596,21 @@ class Orchestra:
 
         # Check each extension
         for ext_id, ext_info in self.extensions.items():
-            # Check installation scope
-            local_installed = (self.local_dir / ext_id).exists()
-            global_installed = (self.global_dir / ext_id).exists()
+            # Check installation scope - look for both commands and scripts
+            local_commands_installed = (self.local_dir / ext_id).exists()
+            global_commands_installed = (self.global_dir / ext_id).exists()
+
+            # Also check for script directory (for extensions without commands like plancheck)
+            local_scripts_installed = (Path(".claude") / "orchestra" / ext_id).exists()
+            global_scripts_installed = (self.home / ".claude" / "orchestra" / ext_id).exists()
+
+            local_installed = local_commands_installed or local_scripts_installed
+            global_installed = global_commands_installed or global_scripts_installed
 
             if not local_installed and not global_installed:
                 table.add_row(
                     ext_info["name"],
-                    "Disabled", 
+                    "Disabled",
                     f"Run 'orchestra enable {ext_id}' to install"
                 )
                 continue
@@ -629,7 +633,7 @@ class Orchestra:
                         with open(task_config) as f:
                             config = json.load(f)
                             if config.get("task") and config.get("requirements"):
-                                state = "Ready"
+                                state = "[green]Ready[/green]"
                                 completed = sum(
                                     1
                                     for req in config["requirements"]
@@ -653,7 +657,7 @@ class Orchestra:
                         with open(tm_config) as f:
                             config = json.load(f)
                             checkpoints = config.get("checkpoints", [])
-                            state = "Ready"
+                            state = "[green]Ready[/green]"
                             if checkpoints:
                                 details = f"{len(checkpoints)} checkpoint(s) saved"
                             else:
@@ -661,7 +665,7 @@ class Orchestra:
                     except Exception:
                         details = "Error reading config"
                 else:
-                    state = "Ready"
+                    state = "[green]Ready[/green]"
                     details = "Will create checkpoints automatically"
 
             elif ext_id == "tidy":
@@ -671,7 +675,7 @@ class Orchestra:
                         with open(tidy_config) as f:
                             config = json.load(f)
                             if config.get("project_type") and config.get("tools"):
-                                state = "Ready"
+                                state = "[green]Ready[/green]"
                                 tools = ", ".join(config["tools"].keys())
                                 details = f"{config['project_type']} project: {tools}"
                             else:
@@ -691,7 +695,7 @@ class Orchestra:
                             config = json.load(f)
                             calibration = config.get("calibration", {})
                             if calibration.get("calibrated_at"):
-                                state = "Ready"
+                                state = "[green]Ready[/green]"
                                 framework = calibration.get("framework", "Unknown")
                                 test_count = len(config.get("test_results", []))
                                 details = (
@@ -705,6 +709,28 @@ class Orchestra:
                 else:
                     state = "Uninitialized"
                     details = "Run '/tester calibrate' to set up"
+
+            elif ext_id == "plancheck":
+                # Plancheck is ready if its settings exist and enabled is true
+                settings_config = config_path / "settings.json"
+                if settings_config.exists():
+                    try:
+                        with open(settings_config) as f:
+                            settings = json.load(f)
+                            plancheck_settings = settings.get("plancheck", {})
+                            if plancheck_settings.get("enabled", False):
+                                state = "[green]Ready[/green]"
+                                plans_dir = plancheck_settings.get("plans_directory", "plans")
+                                details = f"Monitoring ExitPlanMode, saving to {plans_dir}/"
+                            else:
+                                state = "[dim]Disabled[/dim]"
+                                details = "Extension disabled in settings"
+                    except Exception:
+                        details = "Error reading settings"
+                        state = "[red]Error[/red]"
+                else:
+                    state = "[green]Ready[/green]"
+                    details = "Will create settings on first run"
 
             table.add_row(str(ext_info["name"]), str(state), str(details))
 

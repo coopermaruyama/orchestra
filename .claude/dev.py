@@ -84,6 +84,10 @@ def print_stdin_and_tty():
     # os._exit(2) is used instead of os.exit
     # exit(2)
 
+def write_stdin_to_file():
+    with open("inputs.log", "a") as f:
+        f.write(sys.stdin.read())
 
 if __name__ == "__main__":
-    print_stdin_and_tty()
+    # print_stdin_and_tty()
+    write_stdin_to_file()
