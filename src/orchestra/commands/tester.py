@@ -23,12 +23,7 @@ def run_tester_command(subcommand: str, *args: str) -> None:
     """Helper to run tester commands"""
     # Use the installed module directly
     try:
-        import os
         from orchestra.extensions.tester.tester_monitor import main as tester_main
-        
-        # Set environment variable to prevent recursive calls
-        original_env = os.environ.get("ORCHESTRA_INTERNAL_CALL")
-        os.environ["ORCHESTRA_INTERNAL_CALL"] = "1"
         
         # Set up sys.argv to simulate command line arguments
         original_argv = sys.argv
@@ -38,10 +33,6 @@ def run_tester_command(subcommand: str, *args: str) -> None:
             tester_main()
         finally:
             sys.argv = original_argv
-            if original_env is None:
-                os.environ.pop("ORCHESTRA_INTERNAL_CALL", None)
-            else:
-                os.environ["ORCHESTRA_INTERNAL_CALL"] = original_env
             
     except ImportError:
         console.print(

@@ -277,7 +277,8 @@ class PlancheckMonitor(BaseExtension):
         import os
         
         # Check if we're already in a Claude invocation to prevent recursion
-        if os.environ.get("ORCHESTRA_CLAUDE_INVOCATION") or os.environ.get("ORCHESTRA_INTERNAL_CALL"):
+        # Only check ORCHESTRA_CLAUDE_INVOCATION since ClaudeInvoker handles its own recursion prevention
+        if os.environ.get("ORCHESTRA_CLAUDE_INVOCATION"):
             print(f"📋 Plan review requested for: {plan_path}")
             print("⚠️  Cannot invoke Claude from within Orchestra command to prevent recursion")
             print("💡 To review this plan, run the command directly from Claude Code instead")
@@ -321,7 +322,8 @@ class PlancheckMonitor(BaseExtension):
         import os
         
         # Check if we're already in a Claude invocation to prevent recursion
-        if os.environ.get("ORCHESTRA_CLAUDE_INVOCATION") or os.environ.get("ORCHESTRA_INTERNAL_CALL"):
+        # Only check ORCHESTRA_CLAUDE_INVOCATION since ClaudeInvoker handles its own recursion prevention
+        if os.environ.get("ORCHESTRA_CLAUDE_INVOCATION"):
             print(f"📋 Plan improvement requested for: {plan_path}")
             print("⚠️  Cannot invoke Claude from within Orchestra command to prevent recursion")
             print("💡 To improve this plan, run the command directly from Claude Code instead")
