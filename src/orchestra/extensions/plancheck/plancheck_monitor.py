@@ -30,7 +30,7 @@ class PlancheckMonitor(BaseExtension):
         working_dir = os.environ.get("CLAUDE_WORKING_DIR")
         if not working_dir:
             working_dir = self._get_project_directory()
-            
+
         log_dir = os.path.join(working_dir, ".claude", "logs")
 
         os.makedirs(log_dir, exist_ok=True)
@@ -48,7 +48,7 @@ class PlancheckMonitor(BaseExtension):
             config_file=config_path,  # Let base class handle the default path
             working_dir=base_working_dir,
         )
-        
+
         # Ensure settings exist with defaults
         self._ensure_settings_exist()
 
@@ -62,7 +62,7 @@ class PlancheckMonitor(BaseExtension):
     def get_default_config_filename(self) -> str:
         """Get the default configuration file name for this extension"""
         return "plancheck.json"
-    
+
     def _ensure_settings_exist(self) -> None:
         """Ensure extension settings exist with defaults"""
         settings = self.load_settings()
@@ -81,7 +81,7 @@ class PlancheckMonitor(BaseExtension):
         """Load state and settings"""
         # Load state from the state file (dot-prefixed)
         state = super().load_config()
-        
+
         # Load settings from shared settings.json
         self.settings = self.get_extension_settings("plancheck")
         if not self.settings:
@@ -125,30 +125,33 @@ class PlancheckMonitor(BaseExtension):
     def _handle_post_tool_use_hook(self, context: Dict[str, Any]) -> Dict[str, Any]:
         """Handle PostToolUse hook by detecting ExitPlanMode tool usage"""
         tool_name = context.get("tool_name", "")
-        
+
         if tool_name == "ExitPlanMode":
             self.logger.info("ExitPlanMode tool detected - processing plan")
-            
+
             try:
                 # 1. Save plan to file
-                plan_title = self._save_plan_to_file(context)
-                
+                plan_file_path = self._save_plan_to_file(context)
+
+                # Extract title from the file path for session state
+                plan_title = Path(plan_file_path).stem.split('_', 1)[-1] if plan_file_path else "plan"
+
                 # 2. Signal TimeMachine that a plan is now active via session state
                 self.update_session_state(context, {
                     "plan_active": True,
                     "plan_title": plan_title,
                     "plan_timestamp": datetime.now().isoformat()
                 })
-                
+
                 # 3. Block with plancheck agent review request
-                reason = "ask the plancheck agent to review the current plan and decide if it needs more work"
+                reason = f"ask the plancheck agent to review the current plan and decide if it needs more work. The plan has been saved to: {plan_file_path} - update it if there are revisions needed."
                 self.logger.info(f"Blocking ExitPlanMode for review: {reason}")
-                
+
                 return {
                     "block": True,
                     "reason": reason
                 }
-                
+
             except Exception as e:
                 self.logger.error(f"Error handling ExitPlanMode: {e}")
                 import traceback
@@ -160,25 +163,25 @@ class PlancheckMonitor(BaseExtension):
 
     def _save_plan_to_file(self, context: Dict[str, Any]) -> str:
         """Save plan content from ExitPlanMode tool to a markdown file
-        
+
         Args:
             context: Hook context containing tool input
-            
+
         Returns:
-            Generated plan title/filename
+            Full path to the saved plan file
         """
         try:
             # Get the plan content from tool input
             tool_input = context.get("tool_input", {})
             plan_content = tool_input.get("plan", "")
-            
+
             if not plan_content:
                 self.logger.warning("No plan content found in ExitPlanMode tool input")
                 return "untitled-plan"
 
             # Extract a title from the plan content
             plan_title = self._extract_plan_title(plan_content)
-            
+
             # Create plans directory
             plans_dir = Path(self.orchestra_dir) / "plans"
             plans_dir.mkdir(parents=True, exist_ok=True)
@@ -197,12 +200,12 @@ class PlancheckMonitor(BaseExtension):
                 f.write("\n")
 
             self.logger.info(f"Plan saved to: {plan_file}")
-            
+
             # Update counter and save state
             self.plans_saved += 1
             self.save_config()
-            
-            return plan_title
+
+            return str(plan_file)
 
         except Exception as e:
             self.logger.error(f"Failed to save plan to file: {e}")
@@ -212,10 +215,10 @@ class PlancheckMonitor(BaseExtension):
 
     def _extract_plan_title(self, plan_content: str) -> str:
         """Extract a meaningful title from plan content
-        
+
         Args:
             plan_content: The plan content text
-            
+
         Returns:
             Extracted or generated title
         """
@@ -227,7 +230,7 @@ class PlancheckMonitor(BaseExtension):
                 return line[2:].strip()
             elif line.startswith('## '):
                 return line[3:].strip()
-        
+
         # Try to find first meaningful sentence
         for line in lines:
             line = line.strip()
@@ -237,16 +240,16 @@ class PlancheckMonitor(BaseExtension):
                 if title.endswith('.'):
                     title = title[:-1]
                 return title
-        
+
         # Fallback to generic title
         return "Plan"
 
     def _sanitize_filename(self, title: str) -> str:
         """Sanitize title for use as filename
-        
+
         Args:
             title: Raw title text
-            
+
         Returns:
             Sanitized filename-safe string
         """
@@ -254,15 +257,15 @@ class PlancheckMonitor(BaseExtension):
         sanitized = re.sub(r'[<>:"/\\|?*]', '', title)
         sanitized = re.sub(r'\s+', '-', sanitized)
         sanitized = sanitized.strip('-').lower()
-        
+
         # Limit length
         if len(sanitized) > 50:
             sanitized = sanitized[:50]
-        
+
         # Ensure not empty
         if not sanitized:
             sanitized = "untitled"
-            
+
         return sanitized
 
 
@@ -280,7 +283,7 @@ def main():
         print(f"🔍 Plancheck Monitor Status")
         print(f"Enabled: {monitor.enabled}")
         print(f"Plans saved: {monitor.plans_saved}")
-        
+
     elif command == "hook" and len(sys.argv) > 2:
         # Handle hook invocation
         hook_event = sys.argv[2]

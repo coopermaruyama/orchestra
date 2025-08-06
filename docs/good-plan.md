@@ -1,0 +1,107 @@
+Overview
+
+Create a new Orchestra extension named plancheck that monitors PostToolUse events
+for ExitPlanMode and Stop hooks to track Claude's planning state and create
+appropriate checkpoint tags.
+
+Components to Create
+
+1. Main Extension: src/orchestra/extensions/plancheck/
+
+plancheck/
+├── __init__.py
+├── plancheck_monitor.py  # Main extension class
+└── commands/
+    └── __init__.py       # For future CLI commands
+
+2. Extension Implementation (plancheck_monitor.py)
+
+Key Features:
+- Monitor PostToolUse hook for ExitPlanMode tool
+- Monitor Stop hook to detect plan completion
+- Track plan state (active/inactive) in session state
+- Create TimeMachine checkpoints with plan-specific prefixes
+- Save plans to <state_path>/plans/<title>.md
+- Support new checkpoint prefix schema: plan-<n>, todo-<n>, prompt-<n>
+
+Hook Handlers:
+- _handle_post_tool_use_hook(): Detect ExitPlanMode and TodoWrite tools
+- _handle_stop_hook(): Detect plan completion and create checkpoints
+- Block on ExitPlanMode with plancheck agent review request
+
+3. State Management
+
+- Track active plan status in session state
+- Monitor TodoWrite changes for checkpoint creation
+- Implement new checkpoint counter system with prefixes
+- Integrate with existing TimeMachine git-wip workflow
+
+4. Plan File Management
+
+- Extract plan title from content for filename generation
+- Save plans to .claude/orchestra/plans/ directory
+- Generate timestamped filenames with sanitized titles
+- Store plan metadata in checkpoint commits
+
+5. Checkpoint Tag System Upgrade
+
+- Replace ckpt-<n> schema with typed prefixes:
+  - plan-<n>: Plan-related checkpoints
+  - todo-<n>: TodoWrite change checkpoints
+  - prompt-<n>: Regular prompt checkpoints (existing)
+- Update TimeMachine counter management
+- Maintain backward compatibility with existing tags
+
+6. Integration Points
+
+With TimeMachine:
+- Extend checkpoint creation logic
+- Add new tag prefix support
+- Share git-wip infrastructure
+
+With Task Monitor:
+- Track TodoWrite PostToolUse events
+- Compare oldTodos vs newTodos arrays
+- Create todo-specific checkpoints
+
+Hook Response Format:
+{
+  "block": true,
+  "reason": "ask the plancheck agent to review the current plan and decide if it
+needs more work"
+}
+
+Implementation Steps
+
+1. Create Extension Structure
+  - Create directory structure
+  - Implement BaseExtension subclass
+  - Set up configuration management
+2. Implement Hook Handlers
+  - PostToolUse for ExitPlanMode detection
+  - PostToolUse for TodoWrite monitoring
+  - Stop hook for plan completion
+3. Plan File Management
+  - Create plans directory structure
+  - Implement plan saving logic
+  - Add title extraction and sanitization
+4. Checkpoint System Enhancement
+  - Implement new tag prefix system
+  - Update counter management
+  - Add checkpoint creation for plan/todo events
+5. Testing & Integration
+  - Test with existing TimeMachine
+  - Verify hook registration
+  - Test state persistence
+
+Configuration Files
+
+- State: .claude/orchestra/.plancheck.json
+- Settings: Use shared settings.json with plancheck section
+- Plans directory: .claude/orchestra/plans/
+
+Backward Compatibility
+
+- Existing ckpt-<n> tags remain functional
+- New system uses typed prefixes for new checkpoints
+- TimeMachine functionality preserved

@@ -2,15 +2,65 @@
 
 > Orchestrate your Claude Code workflow with focused extensions
 
-A collection of custom subagents, hooks, and slash commands designed to enhance your Claude Code experience.
+Orchestra is a collection of custom subagents, hooks, and slash commands designed to enhance your Claude Code experience.
 
 It also includes utilities to help you work with claude in a "controlled" way, where your workflow involves prompt engineering rather than fixing claude's mistakes.
 
 Currently includes:
-- **🎯 Task Monitor**: Keep Claude focused on your task requirements. No scope creep, no over-engineering.
 - **🕰️ TimeMachine**: Automatic git checkpointing for every conversation turn. Travel back in time to any previous state.
+- **🔍 Plancheck**: Validates your plans and prompts before execution, ensuring they align with your goals and constraints.
+- **🛑 Neveragain**: Detects when you correct Claude's mistakes and prevents similar issues in the future. Automatically generates memory entries which can be fed into Claude on subsequent runs.
+- **🎯 Task Monitor**: Keep Claude focused on your task requirements. No scope creep, no over-engineering.
 - **🧹 Tidy**: Automated code quality checker that ensures code meets project standards. Runs linters, formatters, and type checkers in parallel while Claude modifies files
 - **🧪 Tester**: Implements a calibration process to make sure claude knows exactly how tests should be run, what frameworks are used, and how to write new tests.
+
+## Quick Start
+
+### One-liner Install
+
+```bash
+# Using python
+curl -sSL https://raw.githubusercontent.com/coopermaruyama/orchestra/main/get-orchestra.py | python3
+
+# Using sh
+curl -sSL https://raw.githubusercontent.com/coopermaruyama/orchestra/main/install.sh | sh
+```
+
+Once installed, run `orchestra enable` in a project to enable extensions for that project.
+
+### Manual Install
+
+```bash
+# Clone repository
+git clone https://github.com/coopermaruyama/orchestra.git
+cd orchestra
+
+# Install with pipx (recommended)
+pipx install .
+
+# Or install with pip
+pip install --user .
+```
+
+### Enable Extensions
+
+```bash
+# Enable all extensions at once
+orchestra enable
+
+# Or enable specific extensions
+orchestra enable task      # Task focus and tracking
+orchestra enable tidy      # Code quality checking
+
+# Or enable to current project only
+orchestra enable task --project
+
+# Use in Claude Code
+/task start               # Start a new task
+/tidy init               # Configure code quality tools
+```
+
+> Note: Extensions include a bootstrap script that allows team members to use commands even without Orchestra installed. They'll get friendly installation instructions on first use.
 
 
 ## Orchestra in Action
@@ -129,50 +179,25 @@ For a basic contact form, consider:
 
 Each extension is implemented via claude hooks which allows us to run python scripts inside of a session and implement advanced functionality. All extensions can be used standalone, for example `orchestra timemachine rollback 2` to go back to the state 2 turns ago.
 
-## Quick Start
 
-### One-liner Install
 
-```bash
-# Quick install (recommended)
-curl -sSL https://raw.githubusercontent.com/coopermaruyama/orchestra/main/get-orchestra.py | python3
 
-curl -sSL https://raw.githubusercontent.com/coopermaruyama/orchestra/main/install.sh | sh
-```
 
-### Manual Install
 
-```bash
-# Clone repository
-git clone https://github.com/coopermaruyama/orchestra.git
-cd orchestra
 
-# Install with pipx (recommended)
-pipx install .
 
-# Or install with pip
-pip install --user .
-```
 
-### Enable Extensions
 
-```bash
-# Enable all extensions at once
-orchestra enable
 
-# Or enable specific extensions
-orchestra enable task      # Task focus and tracking
-orchestra enable tidy      # Code quality checking
 
-# Or enable to current project only
-orchestra enable task --project
 
-# Use in Claude Code
-/task start               # Start a new task
-/tidy init               # Configure code quality tools
-```
 
-> Note: Extensions include a bootstrap script that allows team members to use commands even without Orchestra installed. They'll get friendly installation instructions on first use.
+
+
+
+
+
+
 
 
 ## What is Orchestra?

@@ -30,7 +30,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
         working_dir = os.environ.get("CLAUDE_WORKING_DIR")
         if not working_dir:
             working_dir = self._get_project_directory()
-            
+
         log_dir = os.path.join(working_dir, ".claude", "logs")
 
         os.makedirs(log_dir, exist_ok=True)
@@ -70,7 +70,7 @@ class TaskAlignmentMonitor(GitAwareExtension):
         """Load or create configuration"""
         # Load state from the state file (dot-prefixed)
         state = super().load_config()
-        
+
         # Load settings from shared settings.json
         self.settings = self.get_extension_settings("task")
         if not self.settings:
@@ -133,25 +133,6 @@ class TaskAlignmentMonitor(GitAwareExtension):
         self.last_prompt_id = id
         return current_input
 
-    # Example: 2025-08-02 05:49:23,914 - task_monitor - INFO - handle_hook:108 - Handling hook: PostToolUse
-    # 2025-08-02 05:49:23,914 - task_monitor - DEBUG - handle_hook:109 - Hook context: {
-    #   "session_id": "05e96406-4f76-4790-9058-d9032e834f3b",
-    #   "transcript_path": "/Users/coopermaruyama/.claude/projects/-Users-coopermaruyama-Developer-orchestra/05e96406-4f76-4790-9058-d9032e834f3b.jsonl",
-    #   "cwd": "/Users/coopermaruyama/Developer/orchestra",
-    #   "hook_event_name": "PostToolUse",
-    #   "tool_name": "TodoWrite",
-    #   "tool_input": {
-    #     "todos": [
-    #       {
-    #         "content": "Research current Orchestra architecture and extension structure",
-    #         "status": "in_progress",
-    #         "priority": "high",
-    #         "id": "research-architecture"
-    #       },
-    #       {
-    #         "content": "Design the tidy extension structure and state management",
-    #         "status": "pending",
-    #         "priority": "high",
     def handle_hook(self, hook_type: str, context: HookInput) -> Dict[str, Any]:
         """Universal hook handler - handles Stop and SubagentStop hooks"""
         self.logger.info(f"Handling hook: {hook_type}")

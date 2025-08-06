@@ -446,8 +446,8 @@ class Orchestra:
 
     def _install_subagents(self, extension: str, scope: str) -> None:
         """Install subagents for an extension"""
-        if extension not in ["task", "tidy", "tester"]:
-            return  # Only task, tidy, and tester use subagents
+        if extension not in ["task", "tidy", "tester", "plancheck"]:
+            return  # Only task, tidy, tester, and plancheck use subagents
 
         # Determine agents directory
         if scope == "global":
